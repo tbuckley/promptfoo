@@ -38,6 +38,8 @@ RUN npm prune --omit=dev
 # ---- Final Stage ----
 FROM node:20-alpine
 
+ARG NEXT_PUBLIC_PROMPTFOO_BASE_URL
+ENV NEXT_PUBLIC_PROMPTFOO_BASE_URL=${NEXT_PUBLIC_PROMPTFOO_BASE_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 
 WORKDIR /app
@@ -48,6 +50,9 @@ COPY --from=builder /app/src/web/nextui/.next/static ./src/web/nextui/.next/stat
 COPY --from=builder /app/drizzle ./src/web/nextui/.next/server/drizzle
 
 RUN mkdir -p /root/.promptfoo/output
+
+# Install Python 3.12 in the final stage
+RUN apk update && apk add --no-cache python3
 
 # Create a script to write environment variables to .env file
 RUN echo -e '#!/bin/sh\n\
