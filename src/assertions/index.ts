@@ -1078,6 +1078,61 @@ async function webhookAssertion(
   }
 }
 
+function levenshteinAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+) {
+invariant(
+  typeof renderedValue === 'string',
+  '"levenshtein" assertion type must have a string value',
+);
+const levDistance = levenshtein(outputString, renderedValue);
+const pass = levDistance <= (assertion.threshold || 5);
+return {
+  pass,
+  score: pass ? 1 : 0,
+  reason: pass
+    ? 'Assertion passed'
+    : `Levenshtein distance ${levDistance} is greater than threshold ${
+        assertion.threshold || 5
+      }`,
+  assertion,
+};
+}
+
+async function classifierAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  test: AtomicTestCase,
+) {
+invariant(
+  typeof renderedValue === 'string' || typeof renderedValue === 'undefined',
+  '"classifier" assertion type must have a string value or be undefined',
+);
+
+// Assertion provider overrides test provider
+const classificationResult = await matchesClassification(
+  renderedValue,
+  outputString,
+  assertion.threshold ?? 1,
+  test.options,
+);
+
+if (inverse) {
+  classificationResult.pass = !classificationResult.pass;
+  classificationResult.score = 1 - classificationResult.score;
+}
+
+return {
+  assertion,
+  ...classificationResult,
+};
+}
+
 export async function runAssertion({
   prompt,
   provider,
@@ -1407,47 +1462,11 @@ export async function runAssertion({
   }
 
   if (baseType === 'levenshtein') {
-    invariant(
-      typeof renderedValue === 'string',
-      '"levenshtein" assertion type must have a string value',
-    );
-    const levDistance = levenshtein(outputString, renderedValue);
-    pass = levDistance <= (assertion.threshold || 5);
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass
-        ? 'Assertion passed'
-        : `Levenshtein distance ${levDistance} is greater than threshold ${
-            assertion.threshold || 5
-          }`,
-      assertion,
-    };
+    return levenshteinAssertion(outputString, renderedValue, inverse, assertion);
   }
 
   if (baseType === 'classifier') {
-    invariant(
-      typeof renderedValue === 'string' || typeof renderedValue === 'undefined',
-      '"classifier" assertion type must have a string value or be undefined',
-    );
-
-    // Assertion provider overrides test provider
-    const classificationResult = await matchesClassification(
-      renderedValue,
-      outputString,
-      assertion.threshold ?? 1,
-      test.options,
-    );
-
-    if (inverse) {
-      classificationResult.pass = !classificationResult.pass;
-      classificationResult.score = 1 - classificationResult.score;
-    }
-
-    return {
-      assertion,
-      ...classificationResult,
-    };
+    return classifierAssertion(outputString, renderedValue, inverse, assertion, test);
   }
 
   if (baseType === 'latency') {
