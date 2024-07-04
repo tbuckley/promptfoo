@@ -113,7 +113,7 @@ function handleRougeScore(
 
 function equalsAssertion(
   outputString: string,
-  renderedValue: any,
+  renderedValue: AssertionValue | undefined,
   inverse: boolean,
   assertion: Assertion,
 ): GradingResult {
@@ -137,7 +137,7 @@ function equalsAssertion(
 
 function isJsonAssertion(
   outputString: string,
-  renderedValue: any,
+  renderedValue: AssertionValue | undefined,
   inverse: boolean,
   assertion: Assertion,
   valueFromScript: any,
@@ -272,6 +272,21 @@ export async function isSqlAssertion(
   };
 }
 
+async function containsSqlAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+): Promise<GradingResult> {
+    const match = outputString.match(/```(?:sql)?([^`]+)```/);
+    if (match) {
+      const sqlCode = match[1].trim();
+      return isSqlAssertion(sqlCode, renderedValue, inverse, assertion);
+    } else {
+      return isSqlAssertion(outputString, renderedValue, inverse, assertion);
+  }
+}
+
 export async function runAssertion({
   prompt,
   provider,
@@ -384,15 +399,8 @@ export async function runAssertion({
   if (baseType === 'is-sql') {
     return isSqlAssertion(outputString, renderedValue, inverse, assertion);
   }
-
   if (baseType === 'contains-sql') {
-    const match = outputString.match(/```(?:sql)?([^`]+)```/);
-    if (match) {
-      const sqlCode = match[1].trim();
-      return isSqlAssertion(sqlCode, renderedValue, inverse, assertion);
-    } else {
-      return isSqlAssertion(outputString, renderedValue, inverse, assertion);
-    }
+    return containsSqlAssertion(outputString, renderedValue, inverse, assertion);
   }
 
   if (baseType === 'contains') {
