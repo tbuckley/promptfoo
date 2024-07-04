@@ -85,39 +85,19 @@ function coerceString(value: string | object): string {
   return JSON.stringify(value);
 }
 
-function rougeScoreAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  baseType: 'rouge-n' | 'rouge-l' | 'rouge-s',
-): GradingResult {
-  invariant(typeof renderedValue === 'string', '"rouge" assertion type must be a string value');
-  const fnName = baseType[baseType.length - 1] as 'n' | 'l' | 's';
-  const rougeMethod = rouge[fnName];
-  const score = rougeMethod(outputString, renderedValue);
-  const pass = score >= (assertion.threshold || 0.75) != inverse;
-
-  return {
-    pass,
-    score: inverse ? 1 - score : score,
-    reason: pass
-      ? `${baseType.toUpperCase()} score ${score.toFixed(
-          2,
-        )} is greater than or equal to threshold ${assertion.threshold || 0.75}`
-      : `${baseType.toUpperCase()} score ${score.toFixed(2)} is less than threshold ${
-          assertion.threshold || 0.75
-        }`,
-    assertion,
-  };
+interface BaseAssertion {
+  outputString: string;
+  renderedValue: AssertionValue | undefined;
+  inverse: boolean;
+  assertion: Assertion;
 }
 
-function containsAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-): GradingResult {
+function containsAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+}: BaseAssertion): GradingResult {
   invariant(renderedValue, '"contains" assertion type must have a string or number value');
   invariant(
     typeof renderedValue === 'string' || typeof renderedValue === 'number',
@@ -134,12 +114,12 @@ function containsAssertion(
   };
 }
 
-function containsAnyAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-): GradingResult {
+function containsAnyAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+}: BaseAssertion): GradingResult {
   invariant(renderedValue, '"contains-any" assertion type must have a value');
   if (typeof renderedValue === 'string') {
     renderedValue = renderedValue.split(',').map((v) => v.trim());
@@ -156,12 +136,12 @@ function containsAnyAssertion(
   };
 }
 
-function icontainsAnyAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-): GradingResult {
+function icontainsAnyAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+}: BaseAssertion): GradingResult {
   invariant(renderedValue, '"icontains-any" assertion type must have a value');
   if (typeof renderedValue === 'string') {
     renderedValue = renderedValue.split(',').map((v) => v.trim());
@@ -184,12 +164,12 @@ function icontainsAnyAssertion(
   };
 }
 
-function containsAllAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-): GradingResult {
+function containsAllAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+}: BaseAssertion): GradingResult {
   invariant(renderedValue, '"contains-all" assertion type must have a value');
   if (typeof renderedValue === 'string') {
     renderedValue = renderedValue.split(',').map((v) => v.trim());
@@ -206,12 +186,12 @@ function containsAllAssertion(
   };
 }
 
-function icontainsAllAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-): GradingResult {
+function icontainsAllAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+}: BaseAssertion): GradingResult {
   invariant(renderedValue, '"icontains-all" assertion type must have a value');
   if (typeof renderedValue === 'string') {
     renderedValue = renderedValue.split(',').map((v) => v.trim());
@@ -234,12 +214,12 @@ function icontainsAllAssertion(
   };
 }
 
-function regexAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-): GradingResult {
+function regexAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+}: BaseAssertion): GradingResult {
   invariant(renderedValue, '"regex" assertion type must have a string value');
   invariant(typeof renderedValue === 'string', '"regex" assertion type must have a string value');
   const regex = new RegExp(renderedValue);
@@ -254,12 +234,12 @@ function regexAssertion(
   };
 }
 
-function icontainsAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-): GradingResult {
+function icontainsAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+}: BaseAssertion): GradingResult {
   invariant(renderedValue, '"icontains" assertion type must have a string or number value');
   invariant(
     typeof renderedValue === 'string' || typeof renderedValue === 'number',
@@ -276,12 +256,12 @@ function icontainsAssertion(
   };
 }
 
-function startsWithAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-): GradingResult {
+function startsWithAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+}: BaseAssertion): GradingResult {
   invariant(renderedValue, '"starts-with" assertion type must have a string value');
   invariant(
     typeof renderedValue === 'string',
@@ -345,12 +325,12 @@ function containsJsonAssertion(
   };
 }
 
-function equalsAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-): GradingResult {
+function equalsAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+}: BaseAssertion): GradingResult {
   let pass: boolean;
   if (typeof renderedValue === 'object') {
     pass = util.isDeepStrictEqual(renderedValue, JSON.parse(outputString)) !== inverse;
@@ -424,12 +404,12 @@ function isJsonAssertion(
   };
 }
 
-export async function isSqlAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-): Promise<GradingResult> {
+export async function isSqlAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+}: BaseAssertion): Promise<GradingResult> {
   let pass = false;
   let parsedSql;
   let databaseType: string = 'MySQL';
@@ -506,18 +486,18 @@ export async function isSqlAssertion(
   };
 }
 
-async function containsSqlAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-): Promise<GradingResult> {
+async function containsSqlAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+}: BaseAssertion): Promise<GradingResult> {
   const match = outputString.match(/```(?:sql)?([^`]+)```/);
   if (match) {
     const sqlCode = match[1].trim();
-    return isSqlAssertion(sqlCode, renderedValue, inverse, assertion);
+    return isSqlAssertion({ outputString: sqlCode, renderedValue, inverse, assertion });
   } else {
-    return isSqlAssertion(outputString, renderedValue, inverse, assertion);
+    return isSqlAssertion({ outputString, renderedValue, inverse, assertion });
   }
 }
 
@@ -900,6 +880,33 @@ async function contextRecallAssertion(
   };
 }
 
+function rougeScoreAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  baseType: 'rouge-n' | 'rouge-l' | 'rouge-s',
+): GradingResult {
+  invariant(typeof renderedValue === 'string', '"rouge" assertion type must be a string value');
+  const fnName = baseType[baseType.length - 1] as 'n' | 'l' | 's';
+  const rougeMethod = rouge[fnName];
+  const score = rougeMethod(outputString, renderedValue);
+  const pass = score >= (assertion.threshold || 0.75) != inverse;
+
+  return {
+    pass,
+    score: inverse ? 1 - score : score,
+    reason: pass
+      ? `${baseType.toUpperCase()} score ${score.toFixed(
+          2,
+        )} is greater than or equal to threshold ${assertion.threshold || 0.75}`
+      : `${baseType.toUpperCase()} score ${score.toFixed(2)} is less than threshold ${
+          assertion.threshold || 0.75
+        }`,
+    assertion,
+  };
+}
+
 async function contextRelevanceAssertion(
   outputString: string,
   renderedValue: AssertionValue | undefined,
@@ -1078,12 +1085,11 @@ async function webhookAssertion(
   }
 }
 
-function levenshteinAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-) {
+function levenshteinAssertion({
+  outputString,
+  renderedValue,
+  assertion,
+}: BaseAssertion): GradingResult {
   invariant(
     typeof renderedValue === 'string',
     '"levenshtein" assertion type must have a string value',
@@ -1336,6 +1342,17 @@ function isValidOpenAiFunctionCallAssertion(
   }
 }
 
+interface RunAssertionOptions {
+  prompt?: string;
+  provider?: ApiProvider;
+  assertion: Assertion;
+  test: AtomicTestCase;
+  output: string | object;
+  latencyMs?: number;
+  logProbs?: number[];
+  cost?: number;
+}
+
 export async function runAssertion({
   prompt,
   provider,
@@ -1345,17 +1362,7 @@ export async function runAssertion({
   latencyMs,
   logProbs,
   cost,
-}: {
-  prompt?: string;
-  provider?: ApiProvider;
-  assertion: Assertion;
-  test: AtomicTestCase;
-  output: string | object;
-  latencyMs?: number;
-  logProbs?: number[];
-  cost?: number;
-}): Promise<GradingResult> {
-  
+}: RunAssertionOptions): Promise<GradingResult> {
   invariant(assertion.type, `Assertion must have a type: ${JSON.stringify(assertion)}`);
 
   const inverse = assertion.type.startsWith('not-');
@@ -1437,44 +1444,46 @@ export async function runAssertion({
 
   // Transform test
   test = getFinalTest(test, assertion);
+
   if (baseType === 'equals') {
-    return equalsAssertion(outputString, renderedValue, inverse, assertion);
-  }
-  if (baseType === 'is-json') {
-    return isJsonAssertion(outputString, renderedValue, inverse, assertion, valueFromScript);
+    return equalsAssertion({ outputString, renderedValue, inverse, assertion });
   }
   if (baseType === 'is-sql') {
-    return isSqlAssertion(outputString, renderedValue, inverse, assertion);
+    return isSqlAssertion({ outputString, renderedValue, inverse, assertion });
   }
   if (baseType === 'contains-sql') {
-    return containsSqlAssertion(outputString, renderedValue, inverse, assertion);
+    return containsSqlAssertion({ outputString, renderedValue, inverse, assertion });
   }
   if (baseType === 'contains') {
-    return containsAssertion(outputString, renderedValue, inverse, assertion);
+    return containsAssertion({ outputString, renderedValue, inverse, assertion });
   }
   if (baseType === 'contains-any') {
-    return containsAnyAssertion(outputString, renderedValue, inverse, assertion);
+    return containsAnyAssertion({ outputString, renderedValue, inverse, assertion });
   }
   if (baseType === 'icontains-any') {
-    return icontainsAnyAssertion(outputString, renderedValue, inverse, assertion);
+    return icontainsAnyAssertion({ outputString, renderedValue, inverse, assertion });
   }
   if (baseType === 'contains-all') {
-    return containsAllAssertion(outputString, renderedValue, inverse, assertion);
+    return containsAllAssertion({ outputString, renderedValue, inverse, assertion });
   }
   if (baseType === 'icontains-all') {
-    return icontainsAllAssertion(outputString, renderedValue, inverse, assertion);
+    return icontainsAllAssertion({ outputString, renderedValue, inverse, assertion });
   }
-
   if (baseType === 'regex') {
-    return regexAssertion(outputString, renderedValue, inverse, assertion);
+    return regexAssertion({ outputString, renderedValue, inverse, assertion });
   }
-
   if (baseType === 'icontains') {
-    return icontainsAssertion(outputString, renderedValue, inverse, assertion);
+    return icontainsAssertion({ outputString, renderedValue, inverse, assertion });
+  }
+  if (baseType === 'starts-with') {
+    return startsWithAssertion({ outputString, renderedValue, inverse, assertion });
+  }
+  if (baseType === 'levenshtein') {
+    return levenshteinAssertion({ outputString, renderedValue, inverse, assertion });
   }
 
-  if (baseType === 'starts-with') {
-    return startsWithAssertion(outputString, renderedValue, inverse, assertion);
+  if (baseType === 'is-json') {
+    return isJsonAssertion(outputString, renderedValue, inverse, assertion, valueFromScript);
   }
   if (baseType === 'contains-json') {
     return containsJsonAssertion(outputString, renderedValue, inverse, assertion, valueFromScript);
@@ -1601,10 +1610,6 @@ export async function runAssertion({
 
   if (baseType === 'rouge-n') {
     return rougeScoreAssertion(outputString, renderedValue, inverse, assertion, baseType);
-  }
-
-  if (baseType === 'levenshtein') {
-    return levenshteinAssertion(outputString, renderedValue, inverse, assertion);
   }
 
   if (baseType === 'classifier') {
