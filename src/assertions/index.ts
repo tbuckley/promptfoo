@@ -111,6 +111,239 @@ function handleRougeScore(
   };
 }
 
+function containsAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+): GradingResult {
+  invariant(renderedValue, '"contains" assertion type must have a string or number value');
+  invariant(
+    typeof renderedValue === 'string' || typeof renderedValue === 'number',
+    '"contains" assertion type must have a string or number value',
+  );
+  const pass = outputString.includes(String(renderedValue)) !== inverse;
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass
+      ? 'Assertion passed'
+      : `Expected output to ${inverse ? 'not ' : ''}contain "${renderedValue}"`,
+    assertion,
+  };
+}
+
+function containsAnyAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+): GradingResult {
+  invariant(renderedValue, '"contains-any" assertion type must have a value');
+  if (typeof renderedValue === 'string') {
+    renderedValue = renderedValue.split(',').map((v) => v.trim());
+  }
+  invariant(Array.isArray(renderedValue), '"contains-any" assertion type must have an array value');
+  const pass = renderedValue.some((value) => outputString.includes(String(value))) !== inverse;
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass
+      ? 'Assertion passed'
+      : `Expected output to ${inverse ? 'not ' : ''}contain one of "${renderedValue.join(', ')}"`,
+    assertion,
+  };
+}
+
+function icontainsAnyAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+): GradingResult {
+  invariant(renderedValue, '"icontains-any" assertion type must have a value');
+  if (typeof renderedValue === 'string') {
+    renderedValue = renderedValue.split(',').map((v) => v.trim());
+  }
+  invariant(
+    Array.isArray(renderedValue),
+    '"icontains-any" assertion type must have an array value',
+  );
+  const pass =
+    renderedValue.some((value) =>
+      outputString.toLowerCase().includes(String(value).toLowerCase()),
+    ) !== inverse;
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass
+      ? 'Assertion passed'
+      : `Expected output to ${inverse ? 'not ' : ''}contain one of "${renderedValue.join(', ')}"`,
+    assertion,
+  };
+}
+
+function containsAllAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+): GradingResult {
+  invariant(renderedValue, '"contains-all" assertion type must have a value');
+  if (typeof renderedValue === 'string') {
+    renderedValue = renderedValue.split(',').map((v) => v.trim());
+  }
+  invariant(Array.isArray(renderedValue), '"contains-all" assertion type must have an array value');
+  const pass = renderedValue.every((value) => outputString.includes(String(value))) !== inverse;
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass
+      ? 'Assertion passed'
+      : `Expected output to ${inverse ? 'not ' : ''}contain all of "${renderedValue.join(', ')}"`,
+    assertion,
+  };
+}
+
+function icontainsAllAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+): GradingResult {
+  invariant(renderedValue, '"icontains-all" assertion type must have a value');
+  if (typeof renderedValue === 'string') {
+    renderedValue = renderedValue.split(',').map((v) => v.trim());
+  }
+  invariant(
+    Array.isArray(renderedValue),
+    '"icontains-all" assertion type must have an array value',
+  );
+  const pass =
+    renderedValue.every((value) =>
+      outputString.toLowerCase().includes(String(value).toLowerCase()),
+    ) !== inverse;
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass
+      ? 'Assertion passed'
+      : `Expected output to ${inverse ? 'not ' : ''}contain all of "${renderedValue.join(', ')}"`,
+    assertion,
+  };
+}
+
+function regexAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+): GradingResult {
+  invariant(renderedValue, '"regex" assertion type must have a string value');
+  invariant(typeof renderedValue === 'string', '"regex" assertion type must have a string value');
+  const regex = new RegExp(renderedValue);
+  const pass = regex.test(outputString) !== inverse;
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass
+      ? 'Assertion passed'
+      : `Expected output to ${inverse ? 'not ' : ''}match regex "${renderedValue}"`,
+    assertion,
+  };
+}
+
+function icontainsAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+): GradingResult {
+  invariant(renderedValue, '"icontains" assertion type must have a string or number value');
+  invariant(
+    typeof renderedValue === 'string' || typeof renderedValue === 'number',
+    '"icontains" assertion type must have a string or number value',
+  );
+  const pass = outputString.toLowerCase().includes(String(renderedValue).toLowerCase()) !== inverse;
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass
+      ? 'Assertion passed'
+      : `Expected output to ${inverse ? 'not ' : ''}contain "${renderedValue}"`,
+    assertion,
+  };
+}
+
+function startsWithAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+): GradingResult {
+  invariant(renderedValue, '"starts-with" assertion type must have a string value');
+  invariant(
+    typeof renderedValue === 'string',
+    '"starts-with" assertion type must have a string value',
+  );
+  const pass = outputString.startsWith(String(renderedValue)) !== inverse;
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass
+      ? 'Assertion passed'
+      : `Expected output to ${inverse ? 'not ' : ''}start with "${renderedValue}"`,
+    assertion,
+  };
+}
+
+function containsJsonAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  valueFromScript: any,
+): GradingResult {
+  let errorMessage = 'Expected output to contain valid JSON';
+  const jsonObjects = extractJsonObjects(outputString);
+  let pass = inverse ? jsonObjects.length === 0 : jsonObjects.length > 0;
+  for (const jsonObject of jsonObjects) {
+    if (renderedValue) {
+      let validate: ValidateFunction;
+      if (typeof renderedValue === 'string') {
+        if (renderedValue.startsWith('file://')) {
+          // Reference the JSON schema from external file
+          const schema = valueFromScript;
+          invariant(schema, 'contains-json references a file that does not export a JSON schema');
+          validate = ajv.compile(schema as object);
+        } else {
+          const scheme = yaml.load(renderedValue) as object;
+          validate = ajv.compile(scheme);
+        }
+      } else if (typeof renderedValue === 'object') {
+        // Value is JSON schema
+        validate = ajv.compile(renderedValue);
+      } else {
+        throw new Error('contains-json assertion must have a string or object value');
+      }
+      pass = validate(jsonObject);
+      if (pass) {
+        break;
+      } else {
+        errorMessage = `JSON does not conform to the provided schema. Errors: ${ajv.errorsText(
+          validate.errors,
+        )}`;
+      }
+    }
+  }
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass ? 'Assertion passed' : errorMessage,
+    assertion,
+  };
+}
+
 function equalsAssertion(
   outputString: string,
   renderedValue: AssertionValue | undefined,
@@ -278,12 +511,12 @@ async function containsSqlAssertion(
   inverse: boolean,
   assertion: Assertion,
 ): Promise<GradingResult> {
-    const match = outputString.match(/```(?:sql)?([^`]+)```/);
-    if (match) {
-      const sqlCode = match[1].trim();
-      return isSqlAssertion(sqlCode, renderedValue, inverse, assertion);
-    } else {
-      return isSqlAssertion(outputString, renderedValue, inverse, assertion);
+  const match = outputString.match(/```(?:sql)?([^`]+)```/);
+  if (match) {
+    const sqlCode = match[1].trim();
+    return isSqlAssertion(sqlCode, renderedValue, inverse, assertion);
+  } else {
+    return isSqlAssertion(outputString, renderedValue, inverse, assertion);
   }
 }
 
@@ -402,197 +635,35 @@ export async function runAssertion({
   if (baseType === 'contains-sql') {
     return containsSqlAssertion(outputString, renderedValue, inverse, assertion);
   }
-
   if (baseType === 'contains') {
-    invariant(renderedValue, '"contains" assertion type must have a string or number value');
-    invariant(
-      typeof renderedValue === 'string' || typeof renderedValue === 'number',
-      '"contains" assertion type must have a string or number value',
-    );
-    pass = outputString.includes(String(renderedValue)) !== inverse;
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass
-        ? 'Assertion passed'
-        : `Expected output to ${inverse ? 'not ' : ''}contain "${renderedValue}"`,
-      assertion,
-    };
+    return containsAssertion(outputString, renderedValue, inverse, assertion);
   }
-
   if (baseType === 'contains-any') {
-    invariant(renderedValue, '"contains-any" assertion type must have a value');
-    if (typeof renderedValue === 'string') {
-      renderedValue = renderedValue.split(',').map((v) => v.trim());
-    }
-    invariant(
-      Array.isArray(renderedValue),
-      '"contains-any" assertion type must have an array value',
-    );
-    pass = renderedValue.some((value) => outputString.includes(String(value))) !== inverse;
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass
-        ? 'Assertion passed'
-        : `Expected output to ${inverse ? 'not ' : ''}contain one of "${renderedValue.join(', ')}"`,
-      assertion,
-    };
+    return containsAnyAssertion(outputString, renderedValue, inverse, assertion);
   }
-
   if (baseType === 'icontains-any') {
-    invariant(renderedValue, '"icontains-any" assertion type must have a value');
-    if (typeof renderedValue === 'string') {
-      renderedValue = renderedValue.split(',').map((v) => v.trim());
-    }
-    invariant(
-      Array.isArray(renderedValue),
-      '"icontains-any" assertion type must have an array value',
-    );
-    pass =
-      renderedValue.some((value) =>
-        outputString.toLowerCase().includes(String(value).toLowerCase()),
-      ) !== inverse;
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass
-        ? 'Assertion passed'
-        : `Expected output to ${inverse ? 'not ' : ''}contain one of "${renderedValue.join(', ')}"`,
-      assertion,
-    };
+    return icontainsAnyAssertion(outputString, renderedValue, inverse, assertion);
   }
-
   if (baseType === 'contains-all') {
-    invariant(renderedValue, '"contains-all" assertion type must have a value');
-    if (typeof renderedValue === 'string') {
-      renderedValue = renderedValue.split(',').map((v) => v.trim());
-    }
-    invariant(
-      Array.isArray(renderedValue),
-      '"contains-all" assertion type must have an array value',
-    );
-    pass = renderedValue.every((value) => outputString.includes(String(value))) !== inverse;
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass
-        ? 'Assertion passed'
-        : `Expected output to ${inverse ? 'not ' : ''}contain all of "${renderedValue.join(', ')}"`,
-      assertion,
-    };
+    return containsAllAssertion(outputString, renderedValue, inverse, assertion);
   }
-
   if (baseType === 'icontains-all') {
-    invariant(renderedValue, '"icontains-all" assertion type must have a value');
-    if (typeof renderedValue === 'string') {
-      renderedValue = renderedValue.split(',').map((v) => v.trim());
-    }
-    invariant(
-      Array.isArray(renderedValue),
-      '"icontains-all" assertion type must have an array value',
-    );
-    pass =
-      renderedValue.every((value) =>
-        outputString.toLowerCase().includes(String(value).toLowerCase()),
-      ) !== inverse;
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass
-        ? 'Assertion passed'
-        : `Expected output to ${inverse ? 'not ' : ''}contain all of "${renderedValue.join(', ')}"`,
-      assertion,
-    };
+    return icontainsAllAssertion(outputString, renderedValue, inverse, assertion);
   }
 
   if (baseType === 'regex') {
-    invariant(renderedValue, '"regex" assertion type must have a string value');
-    invariant(typeof renderedValue === 'string', '"regex" assertion type must have a string value');
-    const regex = new RegExp(renderedValue);
-    pass = regex.test(outputString) !== inverse;
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass
-        ? 'Assertion passed'
-        : `Expected output to ${inverse ? 'not ' : ''}match regex "${renderedValue}"`,
-      assertion,
-    };
+    return regexAssertion(outputString, renderedValue, inverse, assertion);
   }
 
   if (baseType === 'icontains') {
-    invariant(renderedValue, '"icontains" assertion type must have a string or number value');
-    invariant(
-      typeof renderedValue === 'string' || typeof renderedValue === 'number',
-      '"icontains" assertion type must have a string or number value',
-    );
-    pass = outputString.toLowerCase().includes(String(renderedValue).toLowerCase()) !== inverse;
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass
-        ? 'Assertion passed'
-        : `Expected output to ${inverse ? 'not ' : ''}contain "${renderedValue}"`,
-      assertion,
-    };
+    return icontainsAssertion(outputString, renderedValue, inverse, assertion);
   }
 
   if (baseType === 'starts-with') {
-    invariant(renderedValue, '"starts-with" assertion type must have a string value');
-    invariant(
-      typeof renderedValue === 'string',
-      '"starts-with" assertion type must have a string value',
-    );
-    pass = outputString.startsWith(String(renderedValue)) !== inverse;
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass
-        ? 'Assertion passed'
-        : `Expected output to ${inverse ? 'not ' : ''}start with "${renderedValue}"`,
-      assertion,
-    };
+    return startsWithAssertion(outputString, renderedValue, inverse, assertion);
   }
   if (baseType === 'contains-json') {
-    let errorMessage = 'Expected output to contain valid JSON';
-    const jsonObjects = extractJsonObjects(outputString);
-    pass = inverse ? jsonObjects.length === 0 : jsonObjects.length > 0;
-    for (const jsonObject of jsonObjects) {
-      if (renderedValue) {
-        let validate: ValidateFunction;
-        if (typeof renderedValue === 'string') {
-          if (renderedValue.startsWith('file://')) {
-            // Reference the JSON schema from external file
-            const schema = valueFromScript;
-            invariant(schema, 'contains-json references a file that does not export a JSON schema');
-            validate = ajv.compile(schema as object);
-          } else {
-            const scheme = yaml.load(renderedValue) as object;
-            validate = ajv.compile(scheme);
-          }
-        } else if (typeof renderedValue === 'object') {
-          // Value is JSON schema
-          validate = ajv.compile(renderedValue);
-        } else {
-          throw new Error('contains-json assertion must have a string or object value');
-        }
-        pass = validate(jsonObject);
-        if (pass) {
-          break;
-        } else {
-          errorMessage = `JSON does not conform to the provided schema. Errors: ${ajv.errorsText(
-            validate.errors,
-          )}`;
-        }
-      }
-    }
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass ? 'Assertion passed' : errorMessage,
-      assertion,
-    };
+    return containsJsonAssertion(outputString, renderedValue, inverse, assertion, valueFromScript);
   }
 
   if (baseType === 'is-valid-openai-tools-call') {
