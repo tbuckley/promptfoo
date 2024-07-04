@@ -1445,73 +1445,29 @@ export async function runAssertion({
   // Transform test
   test = getFinalTest(test, assertion);
 
-  if (baseType === 'contains') {
-    return containsAssertion({ outputString, renderedValue, inverse, assertion });
+  const baseAssertionMap: { [key: string]: Function } = {
+    'contains-all': containsAllAssertion,
+    'contains-any': containsAnyAssertion,
+    'contains-sql': containsSqlAssertion,
+    contains: containsAssertion,
+    equals: equalsAssertion,
+    'icontains-all': icontainsAllAssertion,
+    'icontains-any': icontainsAnyAssertion,
+    icontains: icontainsAssertion,
+    'is-sql': isSqlAssertion,
+    levenshtein: levenshteinAssertion,
+    regex: regexAssertion,
+    'starts-with': startsWithAssertion,
+  };
+  if (baseAssertionMap[baseType]) {
+    return baseAssertionMap[baseType]({ outputString, renderedValue, inverse, assertion });
   }
-  if (baseType === 'contains-all') {
-    return containsAllAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'contains-any') {
-    return containsAnyAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'contains-sql') {
-    return containsSqlAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'equals') {
-    return equalsAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'icontains') {
-    return icontainsAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'icontains-all') {
-    return icontainsAllAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'icontains-any') {
-    return icontainsAnyAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'is-sql') {
-    return isSqlAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'levenshtein') {
-      return levenshteinAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'regex') {
-    return regexAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'starts-with') {
-    return startsWithAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-
 
   if (baseType === 'is-json') {
     return isJsonAssertion(outputString, renderedValue, inverse, assertion, valueFromScript);
   }
   if (baseType === 'contains-json') {
     return containsJsonAssertion(outputString, renderedValue, inverse, assertion, valueFromScript);
-  }
-
-  if (baseType === 'is-valid-openai-tools-call') {
-    return isValidOpenAiToolsCallAssertion(
-      outputString,
-      renderedValue,
-      inverse,
-      assertion,
-      test,
-      output,
-      provider,
-    );
-  }
-
-  if (baseType === 'is-valid-openai-function-call') {
-    return isValidOpenAiFunctionCallAssertion(
-      outputString,
-      renderedValue,
-      inverse,
-      assertion,
-      test,
-      output,
-      provider,
-    );
   }
 
   if (baseType === 'javascript') {
@@ -1535,6 +1491,30 @@ export async function runAssertion({
       valueFromScript,
       output,
       context,
+    );
+  }
+
+  if (baseType === 'is-valid-openai-tools-call') {
+    return isValidOpenAiToolsCallAssertion(
+      outputString,
+      renderedValue,
+      inverse,
+      assertion,
+      test,
+      output,
+      provider,
+    );
+  }
+
+  if (baseType === 'is-valid-openai-function-call') {
+    return isValidOpenAiFunctionCallAssertion(
+      outputString,
+      renderedValue,
+      inverse,
+      assertion,
+      test,
+      output,
+      provider,
     );
   }
 

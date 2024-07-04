@@ -11,59 +11,81 @@ describe('Basic tests', () => {
   it('should pass when the output string is a valid SQL statement', async () => {
     const renderedValue = undefined;
     const outputString = 'SELECT id, name FROM users';
-    const result: GradingResult = await isSqlAssertion(
-      outputString,
-      renderedValue,
-      false,
-      assertion,
-    );
-    expect(result.pass).toBe(true);
-    expect(result.reason).toBe('Assertion passed');
+    await expect(
+      isSqlAssertion({
+        outputString,
+        renderedValue,
+        inverse: false,
+        assertion,
+      }),
+    ).resolves.toEqual({
+      assertion: {
+        type: 'is-sql',
+      },
+      pass: true,
+      reason: 'Assertion passed',
+      score: 1,
+    });
   });
 
   it('should fail when the SQL statement contains a syntax error in the ORDER BY clause', async () => {
     const renderedValue = undefined;
     const outputString = 'SELECT * FROM orders ORDERY BY order_date';
-    const result: GradingResult = await isSqlAssertion(
-      outputString,
-      renderedValue,
-      false,
-      assertion,
-    );
-    expect(result.pass).toBe(false);
-    expect(result.reason).toBe(
-      'SQL statement does not conform to the provided MySQL database syntax.',
-    );
+    await expect(
+      isSqlAssertion({
+        outputString,
+        renderedValue,
+        inverse: false,
+        assertion,
+      }),
+    ).resolves.toEqual({
+      assertion: {
+        type: 'is-sql',
+      },
+      pass: false,
+      reason: 'SQL statement does not conform to the provided MySQL database syntax.',
+      score: 0,
+    });
   });
 
   it('should fail when the SQL statement uses a reserved keyword as a table name', async () => {
     const renderedValue = undefined;
     const outputString = 'SELECT * FROM select WHERE id = 1';
-    const result: GradingResult = await isSqlAssertion(
-      outputString,
-      renderedValue,
-      false,
-      assertion,
-    );
-    expect(result.pass).toBe(false);
-    expect(result.reason).toBe(
-      'SQL statement does not conform to the provided MySQL database syntax.',
-    );
+    await expect(
+      isSqlAssertion({
+        outputString,
+        renderedValue,
+        inverse: false,
+        assertion,
+      }),
+    ).resolves.toEqual({
+      assertion: {
+        type: 'is-sql',
+      },
+      pass: false,
+      reason: 'SQL statement does not conform to the provided MySQL database syntax.',
+      score: 0,
+    });
   });
 
   it('should fail when the SQL statement has an incorrect DELETE syntax', async () => {
     const renderedValue = undefined;
     const outputString = 'DELETE employees WHERE id = 1';
-    const result: GradingResult = await isSqlAssertion(
-      outputString,
-      renderedValue,
-      false,
-      assertion,
-    );
-    expect(result.pass).toBe(false);
-    expect(result.reason).toBe(
-      'SQL statement does not conform to the provided MySQL database syntax.',
-    );
+    await expect(
+      isSqlAssertion({
+        outputString,
+        renderedValue,
+        inverse: false,
+        assertion,
+      }),
+    ).resolves.toEqual({
+      assertion: {
+        type: 'is-sql',
+      },
+      pass: false,
+      reason: 'SQL statement does not conform to the provided MySQL database syntax.',
+      score: 0,
+    });
   });
 
   /**
@@ -98,16 +120,21 @@ describe('Database Specific Syntax Tests', () => {
       database: 'PostgreSQL',
     };
     const outputString = `SELECT * FROM employees WHERE id = 1 LOCK IN SHARE MODE`;
-    const result: GradingResult = await isSqlAssertion(
-      outputString,
-      renderedValue,
-      false,
-      assertion,
-    );
-    expect(result.pass).toBe(false);
-    expect(result.reason).toBe(
-      'SQL statement does not conform to the provided PostgreSQL database syntax.',
-    );
+    await expect(
+      isSqlAssertion({
+        outputString,
+        renderedValue,
+        inverse: false,
+        assertion,
+      }),
+    ).resolves.toEqual({
+      assertion: {
+        type: 'is-sql',
+      },
+      pass: false,
+      reason: 'SQL statement does not conform to the provided PostgreSQL database syntax.',
+      score: 0,
+    });
   });
 
   it('should fail if the output SQL statement conforms to PostgreSQL but not MySQL', async () => {
@@ -115,16 +142,21 @@ describe('Database Specific Syntax Tests', () => {
       database: 'MySQL',
     };
     const outputString = `SELECT first_name, last_name FROM employees WHERE first_name ILIKE 'john%'`;
-    const result: GradingResult = await isSqlAssertion(
-      outputString,
-      renderedValue,
-      false,
-      assertion,
-    );
-    expect(result.pass).toBe(false);
-    expect(result.reason).toBe(
-      'SQL statement does not conform to the provided MySQL database syntax.',
-    );
+    await expect(
+      isSqlAssertion({
+        outputString,
+        renderedValue,
+        inverse: false,
+        assertion,
+      }),
+    ).resolves.toEqual({
+      assertion: {
+        type: 'is-sql',
+      },
+      pass: false,
+      reason: 'SQL statement does not conform to the provided MySQL database syntax.',
+      score: 0,
+    });
   });
 
   it('should pass if the output SQL statement conforms to PostgreSQL but not MySQL', async () => {
@@ -132,19 +164,26 @@ describe('Database Specific Syntax Tests', () => {
       database: 'PostgreSQL',
     };
     const outputString = `SELECT first_name, last_name FROM employees WHERE first_name ILIKE 'john%'`;
-    const result: GradingResult = await isSqlAssertion(
-      outputString,
-      renderedValue,
-      false,
-      assertion,
-    );
-    expect(result.pass).toBe(true);
-    expect(result.reason).toBe('Assertion passed');
+    await expect(
+      isSqlAssertion({
+        outputString,
+        renderedValue,
+        inverse: false,
+        assertion,
+      }),
+    ).resolves.toEqual({
+      assertion: {
+        type: 'is-sql',
+      },
+      pass: true,
+      reason: 'Assertion passed',
+      score: 1,
+    });
   });
 
   /**
    * Catches an incorrect output from node-sql-parser package
-   * The paser cannot differentiate certain syntax between MySQL and PostgreSQL
+   * The parser cannot differentiate certain syntax between MySQL and PostgreSQL
    */
   // it('should fail if the output SQL statement conforms to PostgreSQL but not MySQL', () => {
   //   const renderedValue = {
@@ -165,16 +204,21 @@ describe('White Table/Column List Tests', () => {
       allowedTables: ['(select|update|insert|delete)::null::departments'],
     };
     const outputString = `SELECT * FROM employees`;
-    const result: GradingResult = await isSqlAssertion(
-      outputString,
-      renderedValue,
-      false,
-      assertion,
-    );
-    expect(result.pass).toBe(false);
-    expect(result.reason).toBe(
-      `SQL validation failed: authority = 'select::null::employees' is required in table whiteList to execute SQL = 'SELECT * FROM employees'.`,
-    );
+    await expect(
+      isSqlAssertion({
+        outputString,
+        renderedValue,
+        inverse: false,
+        assertion,
+      }),
+    ).resolves.toEqual({
+      assertion: {
+        type: 'is-sql',
+      },
+      pass: false,
+      reason: `SQL validation failed: authority = 'select::null::employees' is required in table whiteList to execute SQL = 'SELECT * FROM employees'.`,
+      score: 0,
+    });
   });
 
   it('should pass if the output SQL statement does not violate allowedTables', async () => {
@@ -183,14 +227,21 @@ describe('White Table/Column List Tests', () => {
       allowedTables: ['(select|update|insert|delete)::null::departments'],
     };
     const outputString = `SELECT * FROM departments`;
-    const result: GradingResult = await isSqlAssertion(
-      outputString,
-      renderedValue,
-      false,
-      assertion,
-    );
-    expect(result.pass).toBe(true);
-    expect(result.reason).toBe('Assertion passed');
+    await expect(
+      isSqlAssertion({
+        outputString,
+        renderedValue,
+        inverse: false,
+        assertion,
+      }),
+    ).resolves.toEqual({
+      assertion: {
+        type: 'is-sql',
+      },
+      pass: true,
+      reason: 'Assertion passed',
+      score: 1,
+    });
   });
 
   it('should fail if the output SQL statement violate allowedColumns', async () => {
@@ -199,16 +250,21 @@ describe('White Table/Column List Tests', () => {
       allowedColumns: ['select::null::name', 'update::null::id'],
     };
     const outputString = `SELECT id FROM t`;
-    const result: GradingResult = await isSqlAssertion(
-      outputString,
-      renderedValue,
-      false,
-      assertion,
-    );
-    expect(result.pass).toBe(false);
-    expect(result.reason).toBe(
-      `SQL validation failed: authority = 'select::null::id' is required in column whiteList to execute SQL = 'SELECT id FROM t'.`,
-    );
+    await expect(
+      isSqlAssertion({
+        outputString,
+        renderedValue,
+        inverse: false,
+        assertion,
+      }),
+    ).resolves.toEqual({
+      assertion: {
+        type: 'is-sql',
+      },
+      pass: false,
+      reason: `SQL validation failed: authority = 'select::null::id' is required in column whiteList to execute SQL = 'SELECT id FROM t'.`,
+      score: 0,
+    });
   });
 
   it('should pass if the output SQL statement does not violate allowedColumns', async () => {
@@ -217,14 +273,21 @@ describe('White Table/Column List Tests', () => {
       allowedColumns: ['insert::department::dept_name', 'insert::department::location'],
     };
     const outputString = `INSERT INTO department (dept_name, location) VALUES ('Sales', 'New York')`;
-    const result: GradingResult = await isSqlAssertion(
-      outputString,
-      renderedValue,
-      false,
-      assertion,
-    );
-    expect(result.pass).toBe(true);
-    expect(result.reason).toBe('Assertion passed');
+    await expect(
+      isSqlAssertion({
+        outputString,
+        renderedValue,
+        inverse: false,
+        assertion,
+      }),
+    ).resolves.toEqual({
+      assertion: {
+        type: 'is-sql',
+      },
+      pass: true,
+      reason: 'Assertion passed',
+      score: 1,
+    });
   });
 
   /**
