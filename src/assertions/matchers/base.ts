@@ -2,9 +2,8 @@ import { distance as levenshtein } from 'fastest-levenshtein';
 import { type Option as sqlParserOption } from 'node-sql-parser';
 import util from 'node:util';
 import invariant from 'tiny-invariant';
-import { GradingResult } from '../../types';
 import { BaseAssertion } from '.';
-
+import { GradingResult } from '../../types';
 
 export function equalsAssertion({
   outputString,
