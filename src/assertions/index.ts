@@ -44,23 +44,28 @@ import {
   containsAllAssertion,
   containsAnyAssertion,
   containsAssertion,
+  containsSqlAssertion,
   equalsAssertion,
   icontainsAllAssertion,
   icontainsAnyAssertion,
   icontainsAssertion,
+  isSqlAssertion,
   levenshteinAssertion,
   regexAssertion,
-  containsSqlAssertion,
-  isSqlAssertion,
   startsWithAssertion,
 } from './matchers/base';
 import {
-  ScriptedAssertion,
   containsJsonAssertion,
   isJsonAssertion,
   javascriptAssertion,
   pythonAssertion,
+  ScriptedAssertion,
 } from './matchers/scripted';
+import {
+  isValidOpenAiFunctionCallAssertion,
+  isValidOpenAiToolsCallAssertion,
+  OpenAiAssertion,
+} from './matchers/openai';
 
 const ASSERTIONS_MAX_CONCURRENCY = process.env.PROMPTFOO_ASSERTIONS_MAX_CONCURRENCY
   ? parseInt(process.env.PROMPTFOO_ASSERTIONS_MAX_CONCURRENCY, 10)
@@ -109,11 +114,6 @@ interface BaseAssertion {
   assertion: Assertion;
 }
 
-interface OpenAiAssertion extends BaseAssertion {
-  test: AtomicTestCase;
-  output: object | string;
-  provider: ApiProvider | undefined;
-}
 
 interface ModelGradedAssertion extends BaseAssertion {
   test: AtomicTestCase;
@@ -638,105 +638,6 @@ function costAssertion(
       : `Cost ${cost.toPrecision(2)} is greater than threshold ${assertion.threshold}`,
     assertion,
   };
-}
-
-function isValidOpenAiToolsCallAssertion({
-  outputString,
-  renderedValue,
-  inverse,
-  assertion,
-  test,
-  output,
-  provider,
-}: OpenAiAssertion): GradingResult {
-  const toolsOutput = output as {
-    type: 'function';
-    function: { arguments: string; name: string };
-  }[];
-  if (
-    !Array.isArray(toolsOutput) ||
-    toolsOutput.length === 0 ||
-    typeof toolsOutput[0].function.name !== 'string' ||
-    typeof toolsOutput[0].function.arguments !== 'string'
-  ) {
-    return {
-      pass: false,
-      score: 0,
-      reason: `OpenAI did not return a valid-looking tools response: ${JSON.stringify(
-        toolsOutput,
-      )}`,
-      assertion,
-    };
-  }
-
-  try {
-    toolsOutput.forEach((toolOutput) =>
-      validateFunctionCall(
-        toolOutput.function,
-        (provider as OpenAiChatCompletionProvider).config.tools?.map((tool) => tool.function),
-        test.vars,
-      ),
-    );
-    return {
-      pass: true,
-      score: 1,
-      reason: 'Assertion passed',
-      assertion,
-    };
-  } catch (err) {
-    return {
-      pass: false,
-      score: 0,
-      reason: (err as Error).message,
-      assertion,
-    };
-  }
-}
-
-function isValidOpenAiFunctionCallAssertion({
-  outputString,
-  renderedValue,
-  inverse,
-  assertion,
-  test,
-  output,
-  provider,
-}: OpenAiAssertion): GradingResult {
-  const functionOutput = output as { arguments: string; name: string };
-  if (
-    typeof functionOutput !== 'object' ||
-    typeof functionOutput.name !== 'string' ||
-    typeof functionOutput.arguments !== 'string'
-  ) {
-    return {
-      pass: false,
-      score: 0,
-      reason: `OpenAI did not return a valid-looking function call: ${JSON.stringify(
-        functionOutput,
-      )}`,
-      assertion,
-    };
-  }
-  try {
-    validateFunctionCall(
-      functionOutput,
-      (provider as OpenAiChatCompletionProvider).config.functions,
-      test.vars,
-    );
-    return {
-      pass: true,
-      score: 1,
-      reason: 'Assertion passed',
-      assertion,
-    };
-  } catch (err) {
-    return {
-      pass: false,
-      score: 0,
-      reason: (err as Error).message,
-      assertion,
-    };
-  }
 }
 
 interface RunAssertionOptions {
