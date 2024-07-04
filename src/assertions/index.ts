@@ -10,11 +10,10 @@ import path from 'path';
 import Clone from 'rfdc';
 import rouge from 'rouge';
 import invariant from 'tiny-invariant';
-import { AssertionsResult } from './assertions/AssertionsResult';
-import cliState from './cliState';
-import { importModule } from './esm';
-import { fetchWithRetries } from './fetch';
-import logger from './logger';
+import cliState from '../cliState';
+import { importModule } from '../esm';
+import { fetchWithRetries } from '../fetch';
+import logger from '../logger';
 import {
   matchesSimilarity,
   matchesLlmRubric,
@@ -27,12 +26,12 @@ import {
   matchesContextFaithfulness,
   matchesSelectBest,
   matchesModeration,
-} from './matchers';
-import { OpenAiChatCompletionProvider } from './providers/openai';
-import { validateFunctionCall } from './providers/openaiUtil';
-import { parseChatPrompt } from './providers/shared';
-import { runPython, runPythonCode } from './python/wrapper';
-import telemetry from './telemetry';
+} from '../matchers';
+import { OpenAiChatCompletionProvider } from '../providers/openai';
+import { validateFunctionCall } from '../providers/openaiUtil';
+import { parseChatPrompt } from '../providers/shared';
+import { runPython, runPythonCode } from '../python/wrapper';
+import telemetry from '../telemetry';
 import {
   type ApiProvider,
   type Assertion,
@@ -42,8 +41,9 @@ import {
   type TestCase,
   isGradingResult,
   AssertionValue,
-} from './types';
-import { transformOutput, getNunjucksEngine, extractJsonObjects } from './util';
+} from '../types';
+import { transformOutput, getNunjucksEngine, extractJsonObjects } from '../util';
+import { AssertionsResult } from './AssertionsResult';
 
 const ASSERTIONS_MAX_CONCURRENCY = process.env.PROMPTFOO_ASSERTIONS_MAX_CONCURRENCY
   ? parseInt(process.env.PROMPTFOO_ASSERTIONS_MAX_CONCURRENCY, 10)
@@ -111,7 +111,86 @@ function handleRougeScore(
   };
 }
 
-export async function isSql(
+function equalsAssertion(
+  outputString: string,
+  renderedValue: any,
+  inverse: boolean,
+  assertion: Assertion,
+): GradingResult {
+  let pass: boolean;
+  if (typeof renderedValue === 'object') {
+    pass = util.isDeepStrictEqual(renderedValue, JSON.parse(outputString)) !== inverse;
+    renderedValue = JSON.stringify(renderedValue);
+  } else {
+    pass = (renderedValue == outputString) !== inverse;
+  }
+
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass
+      ? 'Assertion passed'
+      : `Expected output "${renderedValue}" to ${inverse ? 'not ' : ''}equal "${outputString}"`,
+    assertion,
+  };
+}
+
+function isJsonAssertion(
+  outputString: string,
+  renderedValue: any,
+  inverse: boolean,
+  assertion: Assertion,
+  valueFromScript: any,
+): GradingResult {
+  let pass: boolean = false;
+  let parsedJson;
+  try {
+    parsedJson = JSON.parse(outputString);
+    pass = !inverse;
+  } catch (err) {
+    pass = inverse;
+  }
+
+  if (pass && renderedValue) {
+    let validate: ValidateFunction;
+    if (typeof renderedValue === 'string') {
+      if (renderedValue.startsWith('file://')) {
+        // Reference the JSON schema from external file
+        const schema = valueFromScript;
+        invariant(schema, 'is-json references a file that does not export a JSON schema');
+        validate = ajv.compile(schema as object);
+      } else {
+        const scheme = yaml.load(renderedValue) as object;
+        validate = ajv.compile(scheme);
+      }
+    } else if (typeof renderedValue === 'object') {
+      // Value is JSON schema
+      validate = ajv.compile(renderedValue);
+    } else {
+      throw new Error('is-json assertion must have a string or object value');
+    }
+    pass = validate(parsedJson);
+    if (!pass) {
+      return {
+        pass,
+        score: 0,
+        reason: `JSON does not conform to the provided schema. Errors: ${ajv.errorsText(
+          validate.errors,
+        )}`,
+        assertion,
+      };
+    }
+  }
+
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass ? 'Assertion passed' : 'Expected output to be valid JSON',
+    assertion,
+  };
+}
+
+export async function isSqlAssertion(
   outputString: string,
   renderedValue: AssertionValue | undefined,
   inverse: boolean,
@@ -296,84 +375,23 @@ export async function runAssertion({
 
   // Transform test
   test = getFinalTest(test, assertion);
-
   if (baseType === 'equals') {
-    if (typeof renderedValue === 'object') {
-      pass = util.isDeepStrictEqual(renderedValue, JSON.parse(outputString)) !== inverse;
-      renderedValue = JSON.stringify(renderedValue);
-    } else {
-      pass = (renderedValue == outputString) !== inverse;
-    }
-
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass
-        ? 'Assertion passed'
-        : `Expected output "${renderedValue}" to ${inverse ? 'not ' : ''}equal "${outputString}"`,
-      assertion,
-    };
+    return equalsAssertion(outputString, renderedValue, inverse, assertion);
   }
-
   if (baseType === 'is-json') {
-    let parsedJson;
-    try {
-      parsedJson = JSON.parse(outputString);
-      pass = !inverse;
-    } catch (err) {
-      pass = inverse;
-    }
-
-    if (pass && renderedValue) {
-      let validate: ValidateFunction;
-      if (typeof renderedValue === 'string') {
-        if (renderedValue.startsWith('file://')) {
-          // Reference the JSON schema from external file
-          const schema = valueFromScript;
-          invariant(schema, 'is-json references a file that does not export a JSON schema');
-          validate = ajv.compile(schema as object);
-        } else {
-          const scheme = yaml.load(renderedValue) as object;
-          validate = ajv.compile(scheme);
-        }
-      } else if (typeof renderedValue === 'object') {
-        // Value is JSON schema
-        validate = ajv.compile(renderedValue);
-      } else {
-        throw new Error('is-json assertion must have a string or object value');
-      }
-      pass = validate(parsedJson);
-      if (!pass) {
-        return {
-          pass,
-          score: 0,
-          reason: `JSON does not conform to the provided schema. Errors: ${ajv.errorsText(
-            validate.errors,
-          )}`,
-          assertion,
-        };
-      }
-    }
-
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass ? 'Assertion passed' : 'Expected output to be valid JSON',
-      assertion,
-    };
+    return isJsonAssertion(outputString, renderedValue, inverse, assertion, valueFromScript);
   }
-
   if (baseType === 'is-sql') {
-    return isSql(outputString, renderedValue, inverse, assertion);
+    return isSqlAssertion(outputString, renderedValue, inverse, assertion);
   }
 
   if (baseType === 'contains-sql') {
     const match = outputString.match(/```(?:sql)?([^`]+)```/);
     if (match) {
       const sqlCode = match[1].trim();
-      return isSql(sqlCode, renderedValue, inverse, assertion);
+      return isSqlAssertion(sqlCode, renderedValue, inverse, assertion);
     } else {
-      return isSql(outputString, renderedValue, inverse, assertion);
+      return isSqlAssertion(outputString, renderedValue, inverse, assertion);
     }
   }
 
