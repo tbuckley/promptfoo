@@ -2,16 +2,17 @@ import { distance as levenshtein } from 'fastest-levenshtein';
 import { type Option as sqlParserOption } from 'node-sql-parser';
 import util from 'node:util';
 import invariant from 'tiny-invariant';
-import { BaseAssertion } from '.';
+import { BaseAssertion, coerceString } from '.';
 import { GradingResult } from '../../types';
 
 export function equalsAssertion({
-  outputString,
+  output,
   renderedValue,
   inverse,
   assertion,
 }: BaseAssertion): GradingResult {
   let pass: boolean;
+  const outputString = coerceString(output);
   if (typeof renderedValue === 'object') {
     pass = util.isDeepStrictEqual(renderedValue, JSON.parse(outputString)) !== inverse;
     renderedValue = JSON.stringify(renderedValue);
@@ -30,7 +31,7 @@ export function equalsAssertion({
 }
 
 export function containsAssertion({
-  outputString,
+  output,
   renderedValue,
   inverse,
   assertion,
@@ -40,6 +41,7 @@ export function containsAssertion({
     typeof renderedValue === 'string' || typeof renderedValue === 'number',
     '"contains" assertion type must have a string or number value',
   );
+  const outputString = coerceString(output);
   const pass = outputString.includes(String(renderedValue)) !== inverse;
   return {
     pass,
@@ -52,7 +54,7 @@ export function containsAssertion({
 }
 
 export function icontainsAssertion({
-  outputString,
+  output,
   renderedValue,
   inverse,
   assertion,
@@ -62,6 +64,7 @@ export function icontainsAssertion({
     typeof renderedValue === 'string' || typeof renderedValue === 'number',
     '"icontains" assertion type must have a string or number value',
   );
+  const outputString = coerceString(output);
   const pass = outputString.toLowerCase().includes(String(renderedValue).toLowerCase()) !== inverse;
   return {
     pass,
@@ -74,7 +77,7 @@ export function icontainsAssertion({
 }
 
 export function containsAnyAssertion({
-  outputString,
+  output,
   renderedValue,
   inverse,
   assertion,
@@ -84,6 +87,7 @@ export function containsAnyAssertion({
     renderedValue = renderedValue.split(',').map((v) => v.trim());
   }
   invariant(Array.isArray(renderedValue), '"contains-any" assertion type must have an array value');
+  const outputString = coerceString(output);
   const pass = renderedValue.some((value) => outputString.includes(String(value))) !== inverse;
   return {
     pass,
@@ -96,7 +100,7 @@ export function containsAnyAssertion({
 }
 
 export function icontainsAnyAssertion({
-  outputString,
+  output,
   renderedValue,
   inverse,
   assertion,
@@ -109,6 +113,7 @@ export function icontainsAnyAssertion({
     Array.isArray(renderedValue),
     '"icontains-any" assertion type must have an array value',
   );
+  const outputString = coerceString(output);
   const pass =
     renderedValue.some((value) =>
       outputString.toLowerCase().includes(String(value).toLowerCase()),
@@ -124,7 +129,7 @@ export function icontainsAnyAssertion({
 }
 
 export function containsAllAssertion({
-  outputString,
+  output,
   renderedValue,
   inverse,
   assertion,
@@ -134,6 +139,7 @@ export function containsAllAssertion({
     renderedValue = renderedValue.split(',').map((v) => v.trim());
   }
   invariant(Array.isArray(renderedValue), '"contains-all" assertion type must have an array value');
+  const outputString = coerceString(output);
   const pass = renderedValue.every((value) => outputString.includes(String(value))) !== inverse;
   return {
     pass,
@@ -146,7 +152,7 @@ export function containsAllAssertion({
 }
 
 export function icontainsAllAssertion({
-  outputString,
+  output,
   renderedValue,
   inverse,
   assertion,
@@ -159,6 +165,7 @@ export function icontainsAllAssertion({
     Array.isArray(renderedValue),
     '"icontains-all" assertion type must have an array value',
   );
+  const outputString = coerceString(output);
   const pass =
     renderedValue.every((value) =>
       outputString.toLowerCase().includes(String(value).toLowerCase()),
@@ -174,7 +181,7 @@ export function icontainsAllAssertion({
 }
 
 export function regexAssertion({
-  outputString,
+  output,
   renderedValue,
   inverse,
   assertion,
@@ -182,6 +189,7 @@ export function regexAssertion({
   invariant(renderedValue, '"regex" assertion type must have a string value');
   invariant(typeof renderedValue === 'string', '"regex" assertion type must have a string value');
   const regex = new RegExp(renderedValue);
+  const outputString = coerceString(output);
   const pass = regex.test(outputString) !== inverse;
   return {
     pass,
@@ -194,7 +202,7 @@ export function regexAssertion({
 }
 
 export function startsWithAssertion({
-  outputString,
+  output,
   renderedValue,
   inverse,
   assertion,
@@ -204,6 +212,7 @@ export function startsWithAssertion({
     typeof renderedValue === 'string',
     '"starts-with" assertion type must have a string value',
   );
+  const outputString = coerceString(output);
   const pass = outputString.startsWith(String(renderedValue)) !== inverse;
   return {
     pass,
@@ -216,11 +225,12 @@ export function startsWithAssertion({
 }
 
 export async function isSqlAssertion({
-  outputString,
+  output,
   renderedValue,
   inverse,
   assertion,
 }: BaseAssertion): Promise<GradingResult> {
+  const outputString = coerceString(output);
   let pass = false;
   let parsedSql;
   let databaseType: string = 'MySQL';
@@ -298,22 +308,23 @@ export async function isSqlAssertion({
 }
 
 export async function containsSqlAssertion({
-  outputString,
+  output,
   renderedValue,
   inverse,
   assertion,
 }: BaseAssertion): Promise<GradingResult> {
+  const outputString = coerceString(output);
   const match = outputString.match(/```(?:sql)?([^`]+)```/);
   if (match) {
     const sqlCode = match[1].trim();
-    return isSqlAssertion({ outputString: sqlCode, renderedValue, inverse, assertion });
+    return isSqlAssertion({ output: sqlCode, renderedValue, inverse, assertion });
   } else {
-    return isSqlAssertion({ outputString, renderedValue, inverse, assertion });
+    return isSqlAssertion({ output, renderedValue, inverse, assertion });
   }
 }
 
 export function levenshteinAssertion({
-  outputString,
+  output,
   renderedValue,
   assertion,
 }: BaseAssertion): GradingResult {
@@ -321,6 +332,7 @@ export function levenshteinAssertion({
     typeof renderedValue === 'string',
     '"levenshtein" assertion type must have a string value',
   );
+  const outputString = coerceString(output);
   const levDistance = levenshtein(outputString, renderedValue);
   const pass = levDistance <= (assertion.threshold || 5);
   return {

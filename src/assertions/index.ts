@@ -24,8 +24,6 @@ import {
   matchesSelectBest,
   matchesModeration,
 } from '../matchers';
-import { OpenAiChatCompletionProvider } from '../providers/openai';
-import { validateFunctionCall } from '../providers/openaiUtil';
 import { parseChatPrompt } from '../providers/shared';
 import { runPython } from '../python/wrapper';
 import telemetry from '../telemetry';
@@ -40,6 +38,7 @@ import {
 } from '../types';
 import { transformOutput, getNunjucksEngine } from '../util';
 import { AssertionsResult } from './AssertionsResult';
+import { BaseAssertion, coerceString } from './matchers';
 import {
   containsAllAssertion,
   containsAnyAssertion,
@@ -55,17 +54,17 @@ import {
   startsWithAssertion,
 } from './matchers/base';
 import {
+  isValidOpenAiFunctionCallAssertion,
+  isValidOpenAiToolsCallAssertion,
+  OpenAiAssertion,
+} from './matchers/openai';
+import {
   containsJsonAssertion,
   isJsonAssertion,
   javascriptAssertion,
   pythonAssertion,
   ScriptedAssertion,
 } from './matchers/scripted';
-import {
-  isValidOpenAiFunctionCallAssertion,
-  isValidOpenAiToolsCallAssertion,
-  OpenAiAssertion,
-} from './matchers/openai';
 
 const ASSERTIONS_MAX_CONCURRENCY = process.env.PROMPTFOO_ASSERTIONS_MAX_CONCURRENCY
   ? parseInt(process.env.PROMPTFOO_ASSERTIONS_MAX_CONCURRENCY, 10)
@@ -100,38 +99,23 @@ function getFinalTest(test: TestCase, assertion: Assertion) {
   return Object.freeze(ret);
 }
 
-function coerceString(value: string | object): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-  return JSON.stringify(value);
-}
-
-interface BaseAssertion {
-  outputString: string;
-  renderedValue: AssertionValue | undefined;
-  inverse: boolean;
-  assertion: Assertion;
-}
-
-
 interface ModelGradedAssertion extends BaseAssertion {
   test: AtomicTestCase;
   prompt: string | undefined;
 }
 
-async function similarAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  test: AtomicTestCase,
-): Promise<GradingResult> {
+async function similarAssertion({
+  output,
+  renderedValue,
+  inverse,
+  assertion,
+  test,
+}: ModelGradedAssertion): Promise<GradingResult> {
   invariant(
     typeof renderedValue === 'string' || Array.isArray(renderedValue),
     'Similarity assertion type must have a string or array of strings value',
   );
-
+  const outputString = coerceString(output);
   if (Array.isArray(renderedValue)) {
     let minScore = Infinity;
     for (const value of renderedValue) {
@@ -172,13 +156,12 @@ async function similarAssertion(
   }
 }
 
-async function llmRubricAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  test: AtomicTestCase,
-): Promise<GradingResult> {
+async function llmRubricAssertion({
+  output,
+  renderedValue,
+  assertion,
+  test,
+}: ModelGradedAssertion): Promise<GradingResult> {
   invariant(
     typeof renderedValue === 'string' || typeof renderedValue === 'undefined',
     '"llm-rubric" assertion type must have a string value',
@@ -189,6 +172,7 @@ async function llmRubricAssertion(
       test.options.rubricPrompt = JSON.stringify(test.options.rubricPrompt);
     }
   }
+  const outputString = coerceString(output);
 
   // Update the assertion value. This allows the web view to display the prompt.
   assertion.value = assertion.value || test.options?.rubricPrompt;
@@ -198,14 +182,13 @@ async function llmRubricAssertion(
   };
 }
 
-async function factualityAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  test: AtomicTestCase,
-  prompt: string | undefined,
-): Promise<GradingResult> {
+async function factualityAssertion({
+  output,
+  renderedValue,
+  assertion,
+  test,
+  prompt,
+}: ModelGradedAssertion): Promise<GradingResult> {
   invariant(
     typeof renderedValue === 'string',
     'factuality assertion type must have a string value',
@@ -217,6 +200,7 @@ async function factualityAssertion(
     invariant(typeof test.options.rubricPrompt === 'string', 'rubricPrompt must be a string');
     test.options.rubricPrompt = nunjucks.renderString(test.options.rubricPrompt, test.vars || {});
   }
+  const outputString = coerceString(output);
 
   return {
     assertion,
@@ -224,14 +208,13 @@ async function factualityAssertion(
   };
 }
 
-async function modelGradedClosedQaAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  test: AtomicTestCase,
-  prompt: string | undefined,
-): Promise<GradingResult> {
+async function modelGradedClosedQaAssertion({
+  output,
+  renderedValue,
+  assertion,
+  test,
+  prompt,
+}: ModelGradedAssertion): Promise<GradingResult> {
   invariant(
     typeof renderedValue === 'string',
     'model-graded-closedqa assertion type must have a string value',
@@ -243,6 +226,7 @@ async function modelGradedClosedQaAssertion(
     invariant(typeof test.options.rubricPrompt === 'string', 'rubricPrompt must be a string');
     test.options.rubricPrompt = nunjucks.renderString(test.options.rubricPrompt, test.vars || {});
   }
+  const outputString = coerceString(output);
 
   return {
     assertion,
@@ -250,15 +234,12 @@ async function modelGradedClosedQaAssertion(
   };
 }
 
-async function answerRelevanceAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  output: string | object,
-  test: AtomicTestCase,
-  prompt: string | undefined,
-): Promise<GradingResult> {
+async function answerRelevanceAssertion({
+  assertion,
+  output,
+  test,
+  prompt,
+}: ModelGradedAssertion): Promise<GradingResult> {
   invariant(
     typeof output === 'string',
     'answer-relevance assertion type must evaluate a string output',
@@ -758,7 +739,7 @@ export async function runAssertion({
   };
 
   if (baseAssertionMap[baseType]) {
-    return baseAssertionMap[baseType]({ outputString, renderedValue, inverse, assertion });
+    return baseAssertionMap[baseType]({ output, renderedValue, inverse, assertion });
   }
 
   if (baseType === 'rouge-n') {
@@ -776,7 +757,6 @@ export async function runAssertion({
 
   if (scriptedAssertionMap[baseType]) {
     return scriptedAssertionMap[baseType]({
-      outputString,
       renderedValue,
       inverse,
       assertion,
@@ -798,7 +778,6 @@ export async function runAssertion({
 
   if (openAiAssertionMap[baseType]) {
     return openAiAssertionMap[baseType]({
-      outputString,
       renderedValue,
       inverse,
       assertion,
@@ -809,38 +788,37 @@ export async function runAssertion({
   }
 
   if (baseType === 'similar') {
-    return similarAssertion(outputString, renderedValue, inverse, assertion, test);
+    return similarAssertion({ output, renderedValue, inverse, assertion, test, prompt });
   }
 
   if (baseType === 'llm-rubric') {
-    return llmRubricAssertion(outputString, renderedValue, inverse, assertion, test);
+    return llmRubricAssertion({ output, renderedValue, inverse, assertion, test, prompt });
   }
 
   if (baseType === 'model-graded-factuality' || baseType === 'factuality') {
-    return factualityAssertion(outputString, renderedValue, inverse, assertion, test, prompt);
+    return factualityAssertion({ output, renderedValue, inverse, assertion, test, prompt });
   }
 
   if (baseType === 'model-graded-closedqa') {
-    return modelGradedClosedQaAssertion(
-      outputString,
+    return modelGradedClosedQaAssertion({
+      output,
       renderedValue,
       inverse,
       assertion,
       test,
       prompt,
-    );
+    });
   }
 
   if (baseType === 'answer-relevance') {
-    return answerRelevanceAssertion(
-      outputString,
+    return answerRelevanceAssertion({
       renderedValue,
       inverse,
       assertion,
       output,
       test,
       prompt,
-    );
+    });
   }
 
   if (baseType === 'context-recall') {

@@ -3,14 +3,13 @@ import addFormats from 'ajv-formats';
 import dedent from 'dedent';
 import yaml from 'js-yaml';
 import invariant from 'tiny-invariant';
-import { BaseAssertion } from '.';
+import { BaseAssertion, coerceString } from '.';
 import { runPythonCode } from '../../python/wrapper';
 import { AssertionValueFunctionContext, GradingResult, isGradingResult } from '../../types';
 import { extractJsonObjects } from '../../util';
 
 export interface ScriptedAssertion extends BaseAssertion {
   valueFromScript?: any;
-  output?: string | object;
   context?: AssertionValueFunctionContext | undefined;
 }
 
@@ -18,7 +17,7 @@ const ajv = new Ajv();
 addFormats(ajv);
 
 export function isJsonAssertion({
-  outputString,
+  output,
   renderedValue,
   inverse,
   assertion,
@@ -27,6 +26,7 @@ export function isJsonAssertion({
   let pass: boolean = false;
   let parsedJson;
   try {
+    const outputString = coerceString(output);
     parsedJson = JSON.parse(outputString);
     pass = !inverse;
   } catch (err) {
@@ -73,13 +73,14 @@ export function isJsonAssertion({
 }
 
 export function containsJsonAssertion({
-  outputString,
+  output,
   renderedValue,
   inverse,
   assertion,
   valueFromScript,
 }: ScriptedAssertion): GradingResult {
   let errorMessage = 'Expected output to contain valid JSON';
+  const outputString = coerceString(output);
   const jsonObjects = extractJsonObjects(outputString);
   let pass = inverse ? jsonObjects.length === 0 : jsonObjects.length > 0;
   for (const jsonObject of jsonObjects) {
@@ -120,7 +121,6 @@ export function containsJsonAssertion({
 }
 
 export async function javascriptAssertion({
-  outputString,
   renderedValue,
   inverse,
   assertion,
@@ -128,6 +128,7 @@ export async function javascriptAssertion({
   output,
   context,
 }: ScriptedAssertion): Promise<GradingResult> {
+  const outputString = coerceString(output);
   invariant(context, 'javascript assertion must have a context');
   let pass: boolean = false;
   let score: number = 0.0;
@@ -205,7 +206,6 @@ export async function javascriptAssertion({
   };
 }
 export async function pythonAssertion({
-  outputString,
   renderedValue,
   inverse,
   assertion,
@@ -213,6 +213,7 @@ export async function pythonAssertion({
   output,
   context,
 }: ScriptedAssertion): Promise<GradingResult> {
+  const outputString = coerceString(output);
   invariant(context, 'python assertion must have a context');
   let pass: boolean = false;
   let score: number = 0.0;
