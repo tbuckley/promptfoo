@@ -1445,42 +1445,43 @@ export async function runAssertion({
   // Transform test
   test = getFinalTest(test, assertion);
 
-  if (baseType === 'equals') {
-    return equalsAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'is-sql') {
-    return isSqlAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'contains-sql') {
-    return containsSqlAssertion({ outputString, renderedValue, inverse, assertion });
-  }
   if (baseType === 'contains') {
     return containsAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'contains-any') {
-    return containsAnyAssertion({ outputString, renderedValue, inverse, assertion });
-  }
-  if (baseType === 'icontains-any') {
-    return icontainsAnyAssertion({ outputString, renderedValue, inverse, assertion });
   }
   if (baseType === 'contains-all') {
     return containsAllAssertion({ outputString, renderedValue, inverse, assertion });
   }
-  if (baseType === 'icontains-all') {
-    return icontainsAllAssertion({ outputString, renderedValue, inverse, assertion });
+  if (baseType === 'contains-any') {
+    return containsAnyAssertion({ outputString, renderedValue, inverse, assertion });
   }
-  if (baseType === 'regex') {
-    return regexAssertion({ outputString, renderedValue, inverse, assertion });
+  if (baseType === 'contains-sql') {
+    return containsSqlAssertion({ outputString, renderedValue, inverse, assertion });
+  }
+  if (baseType === 'equals') {
+    return equalsAssertion({ outputString, renderedValue, inverse, assertion });
   }
   if (baseType === 'icontains') {
     return icontainsAssertion({ outputString, renderedValue, inverse, assertion });
   }
+  if (baseType === 'icontains-all') {
+    return icontainsAllAssertion({ outputString, renderedValue, inverse, assertion });
+  }
+  if (baseType === 'icontains-any') {
+    return icontainsAnyAssertion({ outputString, renderedValue, inverse, assertion });
+  }
+  if (baseType === 'is-sql') {
+    return isSqlAssertion({ outputString, renderedValue, inverse, assertion });
+  }
+  if (baseType === 'levenshtein') {
+      return levenshteinAssertion({ outputString, renderedValue, inverse, assertion });
+  }
+  if (baseType === 'regex') {
+    return regexAssertion({ outputString, renderedValue, inverse, assertion });
+  }
   if (baseType === 'starts-with') {
     return startsWithAssertion({ outputString, renderedValue, inverse, assertion });
   }
-  if (baseType === 'levenshtein') {
-    return levenshteinAssertion({ outputString, renderedValue, inverse, assertion });
-  }
+
 
   if (baseType === 'is-json') {
     return isJsonAssertion(outputString, renderedValue, inverse, assertion, valueFromScript);
