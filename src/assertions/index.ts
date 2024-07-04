@@ -1084,22 +1084,20 @@ function levenshteinAssertion(
   inverse: boolean,
   assertion: Assertion,
 ) {
-invariant(
-  typeof renderedValue === 'string',
-  '"levenshtein" assertion type must have a string value',
-);
-const levDistance = levenshtein(outputString, renderedValue);
-const pass = levDistance <= (assertion.threshold || 5);
-return {
-  pass,
-  score: pass ? 1 : 0,
-  reason: pass
-    ? 'Assertion passed'
-    : `Levenshtein distance ${levDistance} is greater than threshold ${
-        assertion.threshold || 5
-      }`,
-  assertion,
-};
+  invariant(
+    typeof renderedValue === 'string',
+    '"levenshtein" assertion type must have a string value',
+  );
+  const levDistance = levenshtein(outputString, renderedValue);
+  const pass = levDistance <= (assertion.threshold || 5);
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass
+      ? 'Assertion passed'
+      : `Levenshtein distance ${levDistance} is greater than threshold ${assertion.threshold || 5}`,
+    assertion,
+  };
 }
 
 async function classifierAssertion(
@@ -1109,28 +1107,134 @@ async function classifierAssertion(
   assertion: Assertion,
   test: AtomicTestCase,
 ) {
-invariant(
-  typeof renderedValue === 'string' || typeof renderedValue === 'undefined',
-  '"classifier" assertion type must have a string value or be undefined',
-);
+  invariant(
+    typeof renderedValue === 'string' || typeof renderedValue === 'undefined',
+    '"classifier" assertion type must have a string value or be undefined',
+  );
 
-// Assertion provider overrides test provider
-const classificationResult = await matchesClassification(
-  renderedValue,
-  outputString,
-  assertion.threshold ?? 1,
-  test.options,
-);
+  // Assertion provider overrides test provider
+  const classificationResult = await matchesClassification(
+    renderedValue,
+    outputString,
+    assertion.threshold ?? 1,
+    test.options,
+  );
 
-if (inverse) {
-  classificationResult.pass = !classificationResult.pass;
-  classificationResult.score = 1 - classificationResult.score;
+  if (inverse) {
+    classificationResult.pass = !classificationResult.pass;
+    classificationResult.score = 1 - classificationResult.score;
+  }
+
+  return {
+    assertion,
+    ...classificationResult,
+  };
 }
 
-return {
-  assertion,
-  ...classificationResult,
-};
+function latencyAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  latencyMs: number | undefined,
+) {
+  if (!assertion.threshold) {
+    throw new Error('Latency assertion must have a threshold in milliseconds');
+  }
+  if (!latencyMs) {
+    throw new Error(
+      'Latency assertion does not support cached results. Rerun the eval with --no-cache',
+    );
+  }
+  const pass = latencyMs <= assertion.threshold;
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass
+      ? 'Assertion passed'
+      : `Latency ${latencyMs}ms is greater than threshold ${assertion.threshold}ms`,
+    assertion,
+  };
+}
+
+function perplexityAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  logProbs: number[] | undefined,
+) {
+  if (!logProbs || logProbs.length === 0) {
+    throw new Error('Perplexity assertion does not support providers that do not return logProbs');
+  }
+  const sumLogProbs = logProbs.reduce((acc, logProb) => acc + logProb, 0);
+  const avgLogProb = sumLogProbs / logProbs.length;
+  const perplexity = Math.exp(-avgLogProb);
+
+  const pass = assertion.threshold ? perplexity <= assertion.threshold : true;
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass
+      ? 'Assertion passed'
+      : `Perplexity ${perplexity.toFixed(2)} is greater than threshold ${assertion.threshold}`,
+    assertion,
+  };
+}
+
+function perplexityScoreAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  logProbs: number[] | undefined,
+) {
+  if (!logProbs || logProbs.length === 0) {
+    throw new Error(
+      'perplexity-score assertion does not support providers that do not return logProbs',
+    );
+  }
+  const sumLogProbs = logProbs.reduce((acc, logProb) => acc + logProb, 0);
+  const avgLogProb = sumLogProbs / logProbs.length;
+  const perplexity = Math.exp(-avgLogProb);
+  const perplexityNorm = 1 / (1 + perplexity);
+
+  const pass = assertion.threshold ? perplexityNorm >= assertion.threshold : true;
+  return {
+    pass,
+    score: perplexityNorm,
+    reason: pass
+      ? 'Assertion passed'
+      : `Perplexity score ${perplexityNorm.toFixed(2)} is less than threshold ${
+          assertion.threshold
+        }`,
+    assertion,
+  };
+}
+
+function costAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  cost: number | undefined,
+) {
+  if (!assertion.threshold) {
+    throw new Error('Cost assertion must have a threshold');
+  }
+  if (typeof cost === 'undefined') {
+    throw new Error('Cost assertion does not support providers that do not return cost');
+  }
+
+  const pass = cost <= assertion.threshold;
+  return {
+    pass,
+    score: pass ? 1 : 0,
+    reason: pass
+      ? 'Assertion passed'
+      : `Cost ${cost.toPrecision(2)} is greater than threshold ${assertion.threshold}`,
+    assertion,
+  };
 }
 
 export async function runAssertion({
@@ -1470,87 +1574,19 @@ export async function runAssertion({
   }
 
   if (baseType === 'latency') {
-    if (!assertion.threshold) {
-      throw new Error('Latency assertion must have a threshold in milliseconds');
-    }
-    if (!latencyMs) {
-      throw new Error(
-        'Latency assertion does not support cached results. Rerun the eval with --no-cache',
-      );
-    }
-    pass = latencyMs <= assertion.threshold;
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass
-        ? 'Assertion passed'
-        : `Latency ${latencyMs}ms is greater than threshold ${assertion.threshold}ms`,
-      assertion,
-    };
+    return latencyAssertion(outputString, renderedValue, inverse, assertion, latencyMs);
   }
 
   if (baseType === 'perplexity') {
-    if (!logProbs || logProbs.length === 0) {
-      throw new Error(
-        'Perplexity assertion does not support providers that do not return logProbs',
-      );
-    }
-    const sumLogProbs = logProbs.reduce((acc, logProb) => acc + logProb, 0);
-    const avgLogProb = sumLogProbs / logProbs.length;
-    const perplexity = Math.exp(-avgLogProb);
-
-    pass = assertion.threshold ? perplexity <= assertion.threshold : true;
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass
-        ? 'Assertion passed'
-        : `Perplexity ${perplexity.toFixed(2)} is greater than threshold ${assertion.threshold}`,
-      assertion,
-    };
+    return perplexityAssertion(outputString, renderedValue, inverse, assertion, logProbs);
   }
 
   if (baseType === 'perplexity-score') {
-    if (!logProbs || logProbs.length === 0) {
-      throw new Error(
-        'perplexity-score assertion does not support providers that do not return logProbs',
-      );
-    }
-    const sumLogProbs = logProbs.reduce((acc, logProb) => acc + logProb, 0);
-    const avgLogProb = sumLogProbs / logProbs.length;
-    const perplexity = Math.exp(-avgLogProb);
-    const perplexityNorm = 1 / (1 + perplexity);
-
-    pass = assertion.threshold ? perplexityNorm >= assertion.threshold : true;
-    return {
-      pass,
-      score: perplexityNorm,
-      reason: pass
-        ? 'Assertion passed'
-        : `Perplexity score ${perplexityNorm.toFixed(2)} is less than threshold ${
-            assertion.threshold
-          }`,
-      assertion,
-    };
+    return perplexityScoreAssertion(outputString, renderedValue, inverse, assertion, logProbs);
   }
 
   if (baseType === 'cost') {
-    if (!assertion.threshold) {
-      throw new Error('Cost assertion must have a threshold');
-    }
-    if (typeof cost === 'undefined') {
-      throw new Error('Cost assertion does not support providers that do not return cost');
-    }
-
-    pass = cost <= assertion.threshold;
-    return {
-      pass,
-      score: pass ? 1 : 0,
-      reason: pass
-        ? 'Assertion passed'
-        : `Cost ${cost.toPrecision(2)} is greater than threshold ${assertion.threshold}`,
-      assertion,
-    };
+    return costAssertion(outputString, renderedValue, inverse, assertion, cost);
   }
 
   throw new Error('Unknown assertion type: ' + assertion.type);
