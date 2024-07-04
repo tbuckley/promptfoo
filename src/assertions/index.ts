@@ -85,21 +85,22 @@ function coerceString(value: string | object): string {
   return JSON.stringify(value);
 }
 
-function handleRougeScore(
-  baseType: 'rouge-n',
+function rougeScoreAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
   assertion: Assertion,
-  expected: string,
-  output: string,
-  inverted: boolean,
+  baseType: 'rouge-n' | 'rouge-l' | 'rouge-s',
 ): GradingResult {
+  invariant(typeof renderedValue === 'string', '"rouge" assertion type must be a string value');
   const fnName = baseType[baseType.length - 1] as 'n' | 'l' | 's';
   const rougeMethod = rouge[fnName];
-  const score = rougeMethod(output, expected);
-  const pass = score >= (assertion.threshold || 0.75) != inverted;
+  const score = rougeMethod(outputString, renderedValue);
+  const pass = score >= (assertion.threshold || 0.75) != inverse;
 
   return {
     pass,
-    score: inverted ? 1 - score : score,
+    score: inverse ? 1 - score : score,
     reason: pass
       ? `${baseType.toUpperCase()} score ${score.toFixed(
           2,
@@ -721,6 +722,362 @@ ${
   };
 }
 
+async function similarAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  test: AtomicTestCase,
+): Promise<GradingResult> {
+  invariant(
+    typeof renderedValue === 'string' || Array.isArray(renderedValue),
+    'Similarity assertion type must have a string or array of strings value',
+  );
+
+  if (Array.isArray(renderedValue)) {
+    let minScore = Infinity;
+    for (const value of renderedValue) {
+      const result = await matchesSimilarity(
+        value,
+        outputString,
+        assertion.threshold || 0.75,
+        inverse,
+        test.options,
+      );
+      if (result.pass) {
+        return {
+          assertion,
+          ...result,
+        };
+      }
+      if (result.score < minScore) {
+        minScore = result.score;
+      }
+    }
+    return {
+      assertion,
+      pass: false,
+      score: minScore,
+      reason: `None of the provided values met the similarity threshold`,
+    };
+  } else {
+    return {
+      assertion,
+      ...(await matchesSimilarity(
+        renderedValue,
+        outputString,
+        assertion.threshold || 0.75,
+        inverse,
+        test.options,
+      )),
+    };
+  }
+}
+
+async function llmRubricAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  test: AtomicTestCase,
+): Promise<GradingResult> {
+  invariant(
+    typeof renderedValue === 'string' || typeof renderedValue === 'undefined',
+    '"llm-rubric" assertion type must have a string value',
+  );
+
+  if (test.options?.rubricPrompt) {
+    if (typeof test.options.rubricPrompt === 'object') {
+      test.options.rubricPrompt = JSON.stringify(test.options.rubricPrompt);
+    }
+  }
+
+  // Update the assertion value. This allows the web view to display the prompt.
+  assertion.value = assertion.value || test.options?.rubricPrompt;
+  return {
+    assertion,
+    ...(await matchesLlmRubric(renderedValue || '', outputString, test.options, test.vars)),
+  };
+}
+
+async function factualityAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  test: AtomicTestCase,
+  prompt: string | undefined,
+): Promise<GradingResult> {
+  invariant(
+    typeof renderedValue === 'string',
+    'factuality assertion type must have a string value',
+  );
+  invariant(prompt, 'factuality assertion type must have a prompt');
+
+  if (test.options?.rubricPrompt) {
+    // Substitute vars in prompt
+    invariant(typeof test.options.rubricPrompt === 'string', 'rubricPrompt must be a string');
+    test.options.rubricPrompt = nunjucks.renderString(test.options.rubricPrompt, test.vars || {});
+  }
+
+  return {
+    assertion,
+    ...(await matchesFactuality(prompt, renderedValue, outputString, test.options, test.vars)),
+  };
+}
+
+async function modelGradedClosedQaAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  test: AtomicTestCase,
+  prompt: string | undefined,
+): Promise<GradingResult> {
+  invariant(
+    typeof renderedValue === 'string',
+    'model-graded-closedqa assertion type must have a string value',
+  );
+  invariant(prompt, 'model-graded-closedqa assertion type must have a prompt');
+
+  if (test.options?.rubricPrompt) {
+    // Substitute vars in prompt
+    invariant(typeof test.options.rubricPrompt === 'string', 'rubricPrompt must be a string');
+    test.options.rubricPrompt = nunjucks.renderString(test.options.rubricPrompt, test.vars || {});
+  }
+
+  return {
+    assertion,
+    ...(await matchesClosedQa(prompt, renderedValue, outputString, test.options, test.vars)),
+  };
+}
+
+async function answerRelevanceAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  output: string | object,
+  test: AtomicTestCase,
+  prompt: string | undefined,
+): Promise<GradingResult> {
+  invariant(
+    typeof output === 'string',
+    'answer-relevance assertion type must evaluate a string output',
+  );
+  invariant(prompt, 'answer-relevance assertion type must have a prompt');
+
+  const input = typeof test.vars?.query === 'string' ? test.vars.query : prompt;
+  return {
+    assertion,
+    ...(await matchesAnswerRelevance(input, output, assertion.threshold || 0, test.options)),
+  };
+}
+
+async function contextRecallAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  test: AtomicTestCase,
+  prompt: string | undefined,
+): Promise<GradingResult> {
+  invariant(
+    typeof renderedValue === 'string',
+    'context-recall assertion type must have a string value',
+  );
+  invariant(prompt, 'context-recall assertion type must have a prompt');
+
+  return {
+    assertion,
+    ...(await matchesContextRecall(
+      typeof test.vars?.context === 'string' ? test.vars.context : prompt,
+      renderedValue,
+      assertion.threshold || 0,
+      test.options,
+      test.vars,
+    )),
+  };
+}
+
+async function contextRelevanceAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  test: AtomicTestCase,
+  prompt: string | undefined,
+): Promise<GradingResult> {
+  invariant(test.vars, 'context-relevance assertion type must have a vars object');
+  invariant(
+    typeof test.vars.query === 'string',
+    'context-relevance assertion type must have a question var',
+  );
+  invariant(
+    typeof test.vars.context === 'string',
+    'context-relevance assertion type must have a context var',
+  );
+
+  return {
+    assertion,
+    ...(await matchesContextRelevance(
+      test.vars.query,
+      test.vars.context,
+      assertion.threshold || 0,
+      test.options,
+    )),
+  };
+}
+
+async function contextFaithfulnessAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  test: AtomicTestCase,
+  prompt: string | undefined,
+  output: string | object,
+): Promise<GradingResult> {
+  invariant(test.vars, 'context-faithfulness assertion type must have a vars object');
+  invariant(
+    typeof test.vars.query === 'string',
+    'context-faithfulness assertion type must have a question var',
+  );
+  invariant(
+    typeof test.vars.context === 'string',
+    'context-faithfulness assertion type must have a context var',
+  );
+  invariant(
+    typeof output === 'string',
+    'context-faithfulness assertion type must have a string output',
+  );
+
+  return {
+    assertion,
+    ...(await matchesContextFaithfulness(
+      test.vars.query,
+      output,
+      test.vars.context,
+      assertion.threshold || 0,
+      test.options,
+    )),
+  };
+}
+
+async function moderationAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  test: AtomicTestCase,
+  prompt: string | undefined,
+  output: string | object,
+): Promise<GradingResult> {
+  invariant(prompt, 'moderation assertion type must have a prompt');
+  invariant(typeof output === 'string', 'moderation assertion type must have a string output');
+  invariant(
+    !assertion.value || (Array.isArray(assertion.value) && typeof assertion.value[0] === 'string'),
+    'moderation assertion value must be a string array if set',
+  );
+
+  if (prompt[0] === '[' || prompt[0] === '{') {
+    // Try to extract the last user message from OpenAI-style prompts.
+    try {
+      const parsedPrompt = parseChatPrompt<null | { role: string; content: string }[]>(
+        prompt,
+        null,
+      );
+      if (parsedPrompt && parsedPrompt.length > 0) {
+        prompt = parsedPrompt[parsedPrompt.length - 1].content;
+      }
+    } catch (err) {
+      // Ignore error
+    }
+  }
+
+  const moderationResult = await matchesModeration(
+    {
+      userPrompt: prompt,
+      assistantResponse: output,
+      categories: Array.isArray(assertion.value) ? assertion.value : [],
+    },
+    test.options,
+  );
+  return {
+    pass: moderationResult.pass,
+    score: moderationResult.score,
+    reason: moderationResult.reason,
+    assertion,
+  };
+}
+
+async function webhookAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  test: AtomicTestCase,
+  prompt: string | undefined,
+  output: string | object,
+): Promise<GradingResult> {
+  let pass: boolean = false;
+  let score: number = 0.0;
+
+  invariant(renderedValue, '"webhook" assertion type must have a URL value');
+  invariant(typeof renderedValue === 'string', '"webhook" assertion type must have a URL value');
+
+  try {
+    const context = {
+      prompt,
+      vars: test.vars || {},
+    };
+    const response = await fetchWithRetries(
+      renderedValue,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ output, context }),
+      },
+      process.env.WEBHOOK_TIMEOUT ? parseInt(process.env.WEBHOOK_TIMEOUT, 10) : 5000,
+    );
+
+    if (!response.ok) {
+      throw new Error(`Webhook response status: ${response.status}`);
+    }
+
+    const jsonResponse = await response.json();
+    pass = jsonResponse.pass !== inverse;
+    score =
+      typeof jsonResponse.score === 'undefined'
+        ? pass
+          ? 1
+          : 0
+        : inverse
+          ? 1 - jsonResponse.score
+          : jsonResponse.score;
+
+    const reason =
+      jsonResponse.reason ||
+      (pass ? 'Assertion passed' : `Webhook returned ${inverse ? 'true' : 'false'}`);
+
+    return {
+      pass,
+      score,
+      reason,
+      assertion,
+    };
+  } catch (err) {
+    return {
+      pass: false,
+      score: 0,
+      reason: `Webhook error: ${(err as Error).message}`,
+      assertion,
+    };
+  }
+}
+
 export async function runAssertion({
   prompt,
   provider,
@@ -975,292 +1332,78 @@ export async function runAssertion({
   }
 
   if (baseType === 'similar') {
-    invariant(
-      typeof renderedValue === 'string' || Array.isArray(renderedValue),
-      'Similarity assertion type must have a string or array of strings value',
-    );
-
-    if (Array.isArray(renderedValue)) {
-      let minScore = Infinity;
-      for (const value of renderedValue) {
-        const result = await matchesSimilarity(
-          value,
-          outputString,
-          assertion.threshold || 0.75,
-          inverse,
-          test.options,
-        );
-        if (result.pass) {
-          return {
-            assertion,
-            ...result,
-          };
-        }
-        if (result.score < minScore) {
-          minScore = result.score;
-        }
-      }
-      return {
-        assertion,
-        pass: false,
-        score: minScore,
-        reason: `None of the provided values met the similarity threshold`,
-      };
-    } else {
-      return {
-        assertion,
-        ...(await matchesSimilarity(
-          renderedValue,
-          outputString,
-          assertion.threshold || 0.75,
-          inverse,
-          test.options,
-        )),
-      };
-    }
+    return similarAssertion(outputString, renderedValue, inverse, assertion, test);
   }
 
   if (baseType === 'llm-rubric') {
-    invariant(
-      typeof renderedValue === 'string' || typeof renderedValue === 'undefined',
-      '"llm-rubric" assertion type must have a string value',
-    );
-
-    if (test.options?.rubricPrompt) {
-      if (typeof test.options.rubricPrompt === 'object') {
-        test.options.rubricPrompt = JSON.stringify(test.options.rubricPrompt);
-      }
-    }
-
-    // Update the assertion value. This allows the web view to display the prompt.
-    assertion.value = assertion.value || test.options?.rubricPrompt;
-    return {
-      assertion,
-      ...(await matchesLlmRubric(renderedValue || '', outputString, test.options, test.vars)),
-    };
+    return llmRubricAssertion(outputString, renderedValue, inverse, assertion, test);
   }
 
   if (baseType === 'model-graded-factuality' || baseType === 'factuality') {
-    invariant(
-      typeof renderedValue === 'string',
-      'factuality assertion type must have a string value',
-    );
-    invariant(prompt, 'factuality assertion type must have a prompt');
-
-    if (test.options?.rubricPrompt) {
-      // Substitute vars in prompt
-      invariant(typeof test.options.rubricPrompt === 'string', 'rubricPrompt must be a string');
-      test.options.rubricPrompt = nunjucks.renderString(test.options.rubricPrompt, test.vars || {});
-    }
-
-    return {
-      assertion,
-      ...(await matchesFactuality(prompt, renderedValue, outputString, test.options, test.vars)),
-    };
+    return factualityAssertion(outputString, renderedValue, inverse, assertion, test, prompt);
   }
 
   if (baseType === 'model-graded-closedqa') {
-    invariant(
-      typeof renderedValue === 'string',
-      'model-graded-closedqa assertion type must have a string value',
-    );
-    invariant(prompt, 'model-graded-closedqa assertion type must have a prompt');
-
-    if (test.options?.rubricPrompt) {
-      // Substitute vars in prompt
-      invariant(typeof test.options.rubricPrompt === 'string', 'rubricPrompt must be a string');
-      test.options.rubricPrompt = nunjucks.renderString(test.options.rubricPrompt, test.vars || {});
-    }
-
-    return {
+    return modelGradedClosedQaAssertion(
+      outputString,
+      renderedValue,
+      inverse,
       assertion,
-      ...(await matchesClosedQa(prompt, renderedValue, outputString, test.options, test.vars)),
-    };
+      test,
+      prompt,
+    );
   }
 
   if (baseType === 'answer-relevance') {
-    invariant(
-      typeof output === 'string',
-      'answer-relevance assertion type must evaluate a string output',
-    );
-    invariant(prompt, 'answer-relevance assertion type must have a prompt');
-
-    const input = typeof test.vars?.query === 'string' ? test.vars.query : prompt;
-    return {
+    return answerRelevanceAssertion(
+      outputString,
+      renderedValue,
+      inverse,
       assertion,
-      ...(await matchesAnswerRelevance(input, output, assertion.threshold || 0, test.options)),
-    };
+      output,
+      test,
+      prompt,
+    );
   }
 
   if (baseType === 'context-recall') {
-    invariant(
-      typeof renderedValue === 'string',
-      'context-recall assertion type must have a string value',
-    );
-    invariant(prompt, 'context-recall assertion type must have a prompt');
-
-    return {
-      assertion,
-      ...(await matchesContextRecall(
-        typeof test.vars?.context === 'string' ? test.vars.context : prompt,
-        renderedValue,
-        assertion.threshold || 0,
-        test.options,
-        test.vars,
-      )),
-    };
+    return contextRecallAssertion(outputString, renderedValue, inverse, assertion, test, prompt);
   }
 
   if (baseType === 'context-relevance') {
-    invariant(test.vars, 'context-relevance assertion type must have a vars object');
-    invariant(
-      typeof test.vars.query === 'string',
-      'context-relevance assertion type must have a question var',
-    );
-    invariant(
-      typeof test.vars.context === 'string',
-      'context-relevance assertion type must have a context var',
-    );
-
-    return {
-      assertion,
-      ...(await matchesContextRelevance(
-        test.vars.query,
-        test.vars.context,
-        assertion.threshold || 0,
-        test.options,
-      )),
-    };
+    return contextRelevanceAssertion(outputString, renderedValue, inverse, assertion, test, prompt);
   }
 
   if (baseType === 'context-faithfulness') {
-    invariant(test.vars, 'context-faithfulness assertion type must have a vars object');
-    invariant(
-      typeof test.vars.query === 'string',
-      'context-faithfulness assertion type must have a question var',
-    );
-    invariant(
-      typeof test.vars.context === 'string',
-      'context-faithfulness assertion type must have a context var',
-    );
-    invariant(
-      typeof output === 'string',
-      'context-faithfulness assertion type must have a string output',
-    );
-
-    return {
+    return contextFaithfulnessAssertion(
+      outputString,
+      renderedValue,
+      inverse,
       assertion,
-      ...(await matchesContextFaithfulness(
-        test.vars.query,
-        output,
-        test.vars.context,
-        assertion.threshold || 0,
-        test.options,
-      )),
-    };
+      test,
+      prompt,
+      output,
+    );
   }
 
   if (baseType === 'moderation') {
-    invariant(prompt, 'moderation assertion type must have a prompt');
-    invariant(typeof output === 'string', 'moderation assertion type must have a string output');
-    invariant(
-      !assertion.value ||
-        (Array.isArray(assertion.value) && typeof assertion.value[0] === 'string'),
-      'moderation assertion value must be a string array if set',
-    );
-
-    if (prompt[0] === '[' || prompt[0] === '{') {
-      // Try to extract the last user message from OpenAI-style prompts.
-      try {
-        const parsedPrompt = parseChatPrompt<null | { role: string; content: string }[]>(
-          prompt,
-          null,
-        );
-        if (parsedPrompt && parsedPrompt.length > 0) {
-          prompt = parsedPrompt[parsedPrompt.length - 1].content;
-        }
-      } catch (err) {
-        // Ignore error
-      }
-    }
-
-    const moderationResult = await matchesModeration(
-      {
-        userPrompt: prompt,
-        assistantResponse: output,
-        categories: Array.isArray(assertion.value) ? assertion.value : [],
-      },
-      test.options,
-    );
-
-    pass = moderationResult.pass;
-    return {
-      pass,
-      score: moderationResult.score,
-      reason: moderationResult.reason,
+    return moderationAssertion(
+      outputString,
+      renderedValue,
+      inverse,
       assertion,
-    };
+      test,
+      prompt,
+      output,
+    );
   }
 
   if (baseType === 'webhook') {
-    invariant(renderedValue, '"webhook" assertion type must have a URL value');
-    invariant(typeof renderedValue === 'string', '"webhook" assertion type must have a URL value');
-
-    try {
-      const context = {
-        prompt,
-        vars: test.vars || {},
-      };
-      const response = await fetchWithRetries(
-        renderedValue,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ output, context }),
-        },
-        process.env.WEBHOOK_TIMEOUT ? parseInt(process.env.WEBHOOK_TIMEOUT, 10) : 5000,
-      );
-
-      if (!response.ok) {
-        throw new Error(`Webhook response status: ${response.status}`);
-      }
-
-      const jsonResponse = await response.json();
-      pass = jsonResponse.pass !== inverse;
-      score =
-        typeof jsonResponse.score === 'undefined'
-          ? pass
-            ? 1
-            : 0
-          : inverse
-            ? 1 - jsonResponse.score
-            : jsonResponse.score;
-
-      const reason =
-        jsonResponse.reason ||
-        (pass ? 'Assertion passed' : `Webhook returned ${inverse ? 'true' : 'false'}`);
-
-      return {
-        pass,
-        score,
-        reason,
-        assertion,
-      };
-    } catch (err) {
-      return {
-        pass: false,
-        score: 0,
-        reason: `Webhook error: ${(err as Error).message}`,
-        assertion,
-      };
-    }
+    return webhookAssertion(outputString, renderedValue, inverse, assertion, test, prompt, output);
   }
 
   if (baseType === 'rouge-n') {
-    invariant(typeof renderedValue === 'string', '"rouge" assertion type must be a string value');
-    return handleRougeScore(baseType, assertion, renderedValue, outputString, inverse);
+    return rougeScoreAssertion(outputString, renderedValue, inverse, assertion, baseType);
   }
 
   if (baseType === 'levenshtein') {
