@@ -71,6 +71,11 @@ import {
   OpenAiAssertion,
 } from './matchers/openai';
 import {
+  PerplexityAssertion,
+  perplexityAssertion,
+  perplexityScoreAssertion,
+} from './matchers/perplexity';
+import {
   containsJsonAssertion,
   isJsonAssertion,
   javascriptAssertion,
@@ -103,7 +108,6 @@ const clone = Clone();
 function getFinalTest(test: TestCase, assertion: Assertion) {
   // Deep copy
   const ret = clone(test);
-
   // Assertion provider overrides test provider
   ret.options = ret.options || {};
   ret.options.provider = assertion.provider || ret.options.provider;
@@ -200,61 +204,6 @@ function latencyAssertion(
     reason: pass
       ? 'Assertion passed'
       : `Latency ${latencyMs}ms is greater than threshold ${assertion.threshold}ms`,
-    assertion,
-  };
-}
-
-function perplexityAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  logProbs: number[] | undefined,
-) {
-  if (!logProbs || logProbs.length === 0) {
-    throw new Error('Perplexity assertion does not support providers that do not return logProbs');
-  }
-  const sumLogProbs = logProbs.reduce((acc, logProb) => acc + logProb, 0);
-  const avgLogProb = sumLogProbs / logProbs.length;
-  const perplexity = Math.exp(-avgLogProb);
-
-  const pass = assertion.threshold ? perplexity <= assertion.threshold : true;
-  return {
-    pass,
-    score: pass ? 1 : 0,
-    reason: pass
-      ? 'Assertion passed'
-      : `Perplexity ${perplexity.toFixed(2)} is greater than threshold ${assertion.threshold}`,
-    assertion,
-  };
-}
-
-function perplexityScoreAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  logProbs: number[] | undefined,
-) {
-  if (!logProbs || logProbs.length === 0) {
-    throw new Error(
-      'perplexity-score assertion does not support providers that do not return logProbs',
-    );
-  }
-  const sumLogProbs = logProbs.reduce((acc, logProb) => acc + logProb, 0);
-  const avgLogProb = sumLogProbs / logProbs.length;
-  const perplexity = Math.exp(-avgLogProb);
-  const perplexityNorm = 1 / (1 + perplexity);
-
-  const pass = assertion.threshold ? perplexityNorm >= assertion.threshold : true;
-  return {
-    pass,
-    score: perplexityNorm,
-    reason: pass
-      ? 'Assertion passed'
-      : `Perplexity score ${perplexityNorm.toFixed(2)} is less than threshold ${
-          assertion.threshold
-        }`,
     assertion,
   };
 }
@@ -382,8 +331,6 @@ export async function runAssertion({
     renderedValue = nunjucks.renderString(renderedValue, test.vars || {});
   }
 
-  const outputString = coerceString(output);
-
   const baseAssertionMap: {
     [key: string]: (options: BaseAssertion) => GradingResult | Promise<GradingResult>;
   } = {
@@ -401,11 +348,6 @@ export async function runAssertion({
     'rouge-n': rougeScoreAssertion,
     'starts-with': startsWithAssertion,
   };
-
-  if (baseAssertionMap[baseType]) {
-    return baseAssertionMap[baseType]({ output, renderedValue, inverse, assertion });
-  }
-
   const scriptedAssertionMap: {
     [key: string]: (options: ScriptedAssertion) => GradingResult | Promise<GradingResult>;
   } = {
@@ -414,39 +356,12 @@ export async function runAssertion({
     javascript: javascriptAssertion,
     python: pythonAssertion,
   };
-
-  if (scriptedAssertionMap[baseType]) {
-    return scriptedAssertionMap[baseType]({
-      renderedValue,
-      inverse,
-      assertion,
-      valueFromScript,
-      output,
-      context,
-    });
-  }
-
-  // Transform test
-  test = getFinalTest(test, assertion);
-
   const openAiAssertionMap: {
     [key: string]: (options: OpenAiAssertion) => GradingResult;
   } = {
-    'is-valid-openai-tools-call': isValidOpenAiToolsCallAssertion,
     'is-valid-openai-function-call': isValidOpenAiFunctionCallAssertion,
+    'is-valid-openai-tools-call': isValidOpenAiToolsCallAssertion,
   };
-
-  if (openAiAssertionMap[baseType]) {
-    return openAiAssertionMap[baseType]({
-      renderedValue,
-      inverse,
-      assertion,
-      test,
-      output,
-      provider,
-    });
-  }
-
   const ModelGradedAssertionMap: {
     [key: string]: (options: ModelGradedAssertion) => GradingResult | Promise<GradingResult>;
   } = {
@@ -463,29 +378,69 @@ export async function runAssertion({
     similar: similarAssertion,
   };
 
-  if (ModelGradedAssertionMap[baseType]) {
-    return ModelGradedAssertionMap[baseType]({
-      renderedValue,
-      inverse,
+  const perplexityAssertionMap: {
+    [key: string]: (options: PerplexityAssertion) => GradingResult | Promise<GradingResult>;
+  } = {
+    perplexity: perplexityAssertion,
+    'perplexity-score': perplexityScoreAssertion,
+  };
+
+  // Transform test
+  test = getFinalTest(test, assertion);
+
+  if (baseAssertionMap[baseType]) {
+    return baseAssertionMap[baseType]({
       assertion,
-      test,
-      prompt,
+      inverse,
       output,
+      renderedValue,
     });
   }
+  if (scriptedAssertionMap[baseType]) {
+    return scriptedAssertionMap[baseType]({
+      assertion,
+      context,
+      inverse,
+      output,
+      renderedValue,
+      valueFromScript,
+    });
+  }
+  if (openAiAssertionMap[baseType]) {
+    return openAiAssertionMap[baseType]({
+      assertion,
+      inverse,
+      output,
+      provider,
+      renderedValue,
+      test,
+    });
+  }
+  if (ModelGradedAssertionMap[baseType]) {
+    return ModelGradedAssertionMap[baseType]({
+      assertion,
+      inverse,
+      output,
+      prompt,
+      renderedValue,
+      test,
+    });
+  }
+  if (perplexityAssertionMap[baseType]) {
+    return perplexityAssertionMap[baseType]({
+      assertion,
+      inverse,
+      logProbs,
+      output,
+      renderedValue,
+    });
+  }
+
+  const outputString = coerceString(output);
 
   if (baseType === 'webhook') {
     return webhookAssertion(outputString, renderedValue, inverse, assertion, test, prompt, output);
   }
-
-  if (baseType === 'perplexity') {
-    return perplexityAssertion(outputString, renderedValue, inverse, assertion, logProbs);
-  }
-
-  if (baseType === 'perplexity-score') {
-    return perplexityScoreAssertion(outputString, renderedValue, inverse, assertion, logProbs);
-  }
-
   if (baseType === 'cost') {
     return costAssertion(outputString, renderedValue, inverse, assertion, cost);
   }
