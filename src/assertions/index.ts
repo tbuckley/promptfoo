@@ -41,6 +41,7 @@ import {
   type TestCase,
   isGradingResult,
   AssertionValue,
+  AssertionValueFunctionContext,
 } from '../types';
 import { transformOutput, getNunjucksEngine, extractJsonObjects } from '../util';
 import { AssertionsResult } from './AssertionsResult';
@@ -90,6 +91,12 @@ interface BaseAssertion {
   renderedValue: AssertionValue | undefined;
   inverse: boolean;
   assertion: Assertion;
+}
+
+interface ScriptedAssertion extends BaseAssertion {
+  valueFromScript?: any;
+  output?: string | object;
+  context?: AssertionValueFunctionContext | undefined;
 }
 
 function containsAssertion({
@@ -278,13 +285,13 @@ function startsWithAssertion({
   };
 }
 
-function containsJsonAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  valueFromScript: any,
-): GradingResult {
+function containsJsonAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+  valueFromScript,
+}: ScriptedAssertion): GradingResult {
   let errorMessage = 'Expected output to contain valid JSON';
   const jsonObjects = extractJsonObjects(outputString);
   let pass = inverse ? jsonObjects.length === 0 : jsonObjects.length > 0;
@@ -349,13 +356,13 @@ function equalsAssertion({
   };
 }
 
-function isJsonAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  valueFromScript: any,
-): GradingResult {
+function isJsonAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+  valueFromScript,
+}: ScriptedAssertion): GradingResult {
   let pass: boolean = false;
   let parsedJson;
   try {
@@ -501,15 +508,16 @@ async function containsSqlAssertion({
   }
 }
 
-async function javascriptAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  valueFromScript: any,
-  output: any,
-  context: any,
-): Promise<GradingResult> {
+async function javascriptAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+  valueFromScript,
+  output,
+  context,
+}: ScriptedAssertion): Promise<GradingResult> {
+  invariant(context, 'javascript assertion must have a context');
   let pass: boolean = false;
   let score: number = 0.0;
   try {
@@ -586,15 +594,16 @@ ${renderedValue}`,
   };
 }
 
-async function pythonAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  valueFromScript: any,
-  output: any,
-  context: any,
-): Promise<GradingResult> {
+async function pythonAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+  valueFromScript,
+  output,
+  context,
+}: ScriptedAssertion): Promise<GradingResult> {
+  invariant(context, 'python assertion must have a context');
   let pass: boolean = false;
   let score: number = 0.0;
   invariant(typeof renderedValue === 'string', 'python assertion must have a string value');
@@ -1379,7 +1388,6 @@ export async function runAssertion({
     });
   }
 
-
   const context = {
     prompt,
     vars: test.vars || {},
@@ -1390,60 +1398,62 @@ export async function runAssertion({
   // Render assertion values
   let renderedValue = assertion.value;
   let valueFromScript: string | boolean | number | GradingResult | object | undefined;
-  if (typeof renderedValue === 'string') {
-    if (renderedValue.startsWith('file://')) {
-      const basePath = cliState.basePath || '';
-      const filePath = path.resolve(basePath, renderedValue.slice('file://'.length));
 
-      if (filePath.endsWith('.js') || filePath.endsWith('.cjs') || filePath.endsWith('.mjs')) {
-        const requiredModule = await importModule(filePath);
-        if (typeof requiredModule === 'function') {
-          valueFromScript = await Promise.resolve(requiredModule(output, context));
-        } else if (requiredModule.default && typeof requiredModule.default === 'function') {
-          valueFromScript = await Promise.resolve(requiredModule.default(output, context));
-        } else {
-          throw new Error(
-            `Assertion malformed: ${filePath} must export a function or have a default export as a function`,
-          );
-        }
-        logger.debug(`Javascript script ${filePath} output: ${valueFromScript}`);
-      } else if (filePath.endsWith('.py')) {
-        try {
-          const pythonScriptOutput = await runPython(filePath, 'get_assert', [output, context]);
-          valueFromScript = pythonScriptOutput;
-          logger.debug(`Python script ${filePath} output: ${valueFromScript}`);
-        } catch (error) {
-          return {
-            pass: false,
-            score: 0,
-            reason: (error as Error).message,
-            assertion,
-          };
-        }
-      } else if (filePath.endsWith('.json')) {
-        renderedValue = JSON.parse(fs.readFileSync(path.resolve(basePath, filePath), 'utf8'));
-      } else if (filePath.endsWith('.yaml') || filePath.endsWith('.yml')) {
-        renderedValue = yaml.load(
-          fs.readFileSync(path.resolve(basePath, filePath), 'utf8'),
-        ) as object;
-      } else if (filePath.endsWith('.txt')) {
-        // Trim to remove trailing newline
-        renderedValue = fs.readFileSync(path.resolve(basePath, filePath), 'utf8').trim();
-      } else {
-        throw new Error(`Unsupported file type: ${filePath}`);
-      }
-    } else {
-      // It's a normal string value
-      renderedValue = nunjucks.renderString(renderedValue, test.vars || {});
-    }
-  } else if (renderedValue && Array.isArray(renderedValue)) {
+  if (renderedValue && Array.isArray(renderedValue)) {
     // Unpack the array
     renderedValue = renderedValue.map((v) => nunjucks.renderString(String(v), test.vars || {}));
+  } else if (typeof renderedValue === 'string' && renderedValue.startsWith('file://')) {
+    const basePath = cliState.basePath || '';
+    const filePath = path.resolve(basePath, renderedValue.slice('file://'.length));
+
+    if (filePath.endsWith('.js') || filePath.endsWith('.cjs') || filePath.endsWith('.mjs')) {
+      const requiredModule = await importModule(filePath);
+      if (typeof requiredModule === 'function') {
+        valueFromScript = await Promise.resolve(requiredModule(output, context));
+      } else if (requiredModule.default && typeof requiredModule.default === 'function') {
+        valueFromScript = await Promise.resolve(requiredModule.default(output, context));
+      } else {
+        throw new Error(
+          `Assertion malformed: ${filePath} must export a function or have a default export as a function`,
+        );
+      }
+      logger.debug(`Javascript script ${filePath} output: ${valueFromScript}`);
+    } else if (filePath.endsWith('.py')) {
+      try {
+        const pythonScriptOutput = await runPython(filePath, 'get_assert', [output, context]);
+        valueFromScript = pythonScriptOutput;
+        logger.debug(`Python script ${filePath} output: ${valueFromScript}`);
+      } catch (error) {
+        // TODO: Should we remove this?
+        return {
+          pass: false,
+          score: 0,
+          reason: (error as Error).message,
+          assertion,
+        };
+      }
+    } else if (filePath.endsWith('.json')) {
+      renderedValue = JSON.parse(fs.readFileSync(path.resolve(basePath, filePath), 'utf8'));
+    } else if (filePath.endsWith('.yaml') || filePath.endsWith('.yml')) {
+      renderedValue = yaml.load(
+        fs.readFileSync(path.resolve(basePath, filePath), 'utf8'),
+      ) as object;
+    } else if (filePath.endsWith('.txt')) {
+      // Trim to remove trailing newline
+      renderedValue = fs.readFileSync(path.resolve(basePath, filePath), 'utf8').trim();
+    } else {
+      throw new Error(`Unsupported file type: ${filePath}`);
+    }
+  } else if (typeof renderedValue === 'string') {
+    // It's a normal string value
+    renderedValue = nunjucks.renderString(renderedValue, test.vars || {});
   }
 
   const outputString = coerceString(output);
 
-  const baseAssertionMap: { [key: string]: (options: BaseAssertion) => GradingResult | Promise<GradingResult> } = {
+  const baseAssertionMap: {
+    [key: string]: (options: BaseAssertion) => GradingResult | Promise<GradingResult>;
+  } = {
     'contains-all': containsAllAssertion,
     'contains-any': containsAnyAssertion,
     'contains-sql': containsSqlAssertion,
@@ -1462,39 +1472,23 @@ export async function runAssertion({
     return baseAssertionMap[baseType]({ outputString, renderedValue, inverse, assertion });
   }
 
+  const scriptedAssertionMap: {
+    [key: string]: (options: ScriptedAssertion) => GradingResult | Promise<GradingResult>;
+  } = {
+    'contains-json': containsJsonAssertion,
+    'is-json': isJsonAssertion,
+    javascript: javascriptAssertion,
+    python: pythonAssertion,
+  };
+
+  if (scriptedAssertionMap[baseType]) {
+    return scriptedAssertionMap[baseType]({ outputString, renderedValue, inverse, assertion, valueFromScript, output, context });
+  }
+
+
   // Transform test
   test = getFinalTest(test, assertion);
 
-  if (baseType === 'is-json') {
-    return isJsonAssertion(outputString, renderedValue, inverse, assertion, valueFromScript);
-  }
-  if (baseType === 'contains-json') {
-    return containsJsonAssertion(outputString, renderedValue, inverse, assertion, valueFromScript);
-  }
-
-  if (baseType === 'javascript') {
-    return javascriptAssertion(
-      outputString,
-      renderedValue,
-      inverse,
-      assertion,
-      valueFromScript,
-      output,
-      context,
-    );
-  }
-
-  if (baseType === 'python') {
-    return pythonAssertion(
-      outputString,
-      renderedValue,
-      inverse,
-      assertion,
-      valueFromScript,
-      output,
-      context,
-    );
-  }
 
   if (baseType === 'is-valid-openai-tools-call') {
     return isValidOpenAiToolsCallAssertion(
