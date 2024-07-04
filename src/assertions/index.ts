@@ -99,6 +99,12 @@ interface ScriptedAssertion extends BaseAssertion {
   context?: AssertionValueFunctionContext | undefined;
 }
 
+interface OpenAiAssertion extends BaseAssertion {
+  test: AtomicTestCase;
+  output: object | string;
+  provider: ApiProvider | undefined;
+}
+
 function containsAssertion({
   outputString,
   renderedValue,
@@ -1252,15 +1258,15 @@ function costAssertion(
   };
 }
 
-function isValidOpenAiToolsCallAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  test: AtomicTestCase,
-  output: object | string,
-  provider: ApiProvider | undefined,
-) {
+function isValidOpenAiToolsCallAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+  test,
+  output,
+  provider,
+}: OpenAiAssertion): GradingResult {
   const toolsOutput = output as {
     type: 'function';
     function: { arguments: string; name: string };
@@ -1305,15 +1311,15 @@ function isValidOpenAiToolsCallAssertion(
   }
 }
 
-function isValidOpenAiFunctionCallAssertion(
-  outputString: string,
-  renderedValue: AssertionValue | undefined,
-  inverse: boolean,
-  assertion: Assertion,
-  test: AtomicTestCase,
-  output: object | string,
-  provider: ApiProvider | undefined,
-) {
+function isValidOpenAiFunctionCallAssertion({
+  outputString,
+  renderedValue,
+  inverse,
+  assertion,
+  test,
+  output,
+  provider,
+}: OpenAiAssertion): GradingResult {
   const functionOutput = output as { arguments: string; name: string };
   if (
     typeof functionOutput !== 'object' ||
@@ -1482,16 +1488,29 @@ export async function runAssertion({
   };
 
   if (scriptedAssertionMap[baseType]) {
-    return scriptedAssertionMap[baseType]({ outputString, renderedValue, inverse, assertion, valueFromScript, output, context });
+    return scriptedAssertionMap[baseType]({
+      outputString,
+      renderedValue,
+      inverse,
+      assertion,
+      valueFromScript,
+      output,
+      context,
+    });
   }
-
 
   // Transform test
   test = getFinalTest(test, assertion);
 
+  const openAiAssertionMap: {
+    [key: string]: (options: OpenAiAssertion) => GradingResult;
+  } = {
+    'is-valid-openai-tools-call': isValidOpenAiToolsCallAssertion,
+    'is-valid-openai-function-call': isValidOpenAiFunctionCallAssertion,
+  };
 
-  if (baseType === 'is-valid-openai-tools-call') {
-    return isValidOpenAiToolsCallAssertion(
+  if (openAiAssertionMap[baseType]) {
+    return openAiAssertionMap[baseType]({
       outputString,
       renderedValue,
       inverse,
@@ -1499,19 +1518,7 @@ export async function runAssertion({
       test,
       output,
       provider,
-    );
-  }
-
-  if (baseType === 'is-valid-openai-function-call') {
-    return isValidOpenAiFunctionCallAssertion(
-      outputString,
-      renderedValue,
-      inverse,
-      assertion,
-      test,
-      output,
-      provider,
-    );
+    });
   }
 
   if (baseType === 'similar') {
