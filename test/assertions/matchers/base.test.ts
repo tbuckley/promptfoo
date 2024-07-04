@@ -11,10 +11,10 @@ describe('isSqlAssertion', () => {
   describe('Basic tests', () => {
     it('should pass when the output string is a valid SQL statement', async () => {
       const renderedValue = undefined;
-      const outputString = 'SELECT id, name FROM users';
+      const output = 'SELECT id, name FROM users';
       await expect(
         isSqlAssertion({
-          outputString,
+          output,
           renderedValue,
           inverse: false,
           assertion,
@@ -31,10 +31,10 @@ describe('isSqlAssertion', () => {
 
     it('should fail when the SQL statement contains a syntax error in the ORDER BY clause', async () => {
       const renderedValue = undefined;
-      const outputString = 'SELECT * FROM orders ORDERY BY order_date';
+      const output = 'SELECT * FROM orders ORDERY BY order_date';
       await expect(
         isSqlAssertion({
-          outputString,
+          output,
           renderedValue,
           inverse: false,
           assertion,
@@ -51,10 +51,10 @@ describe('isSqlAssertion', () => {
 
     it('should fail when the SQL statement uses a reserved keyword as a table name', async () => {
       const renderedValue = undefined;
-      const outputString = 'SELECT * FROM select WHERE id = 1';
+      const output = 'SELECT * FROM select WHERE id = 1';
       await expect(
         isSqlAssertion({
-          outputString,
+          output,
           renderedValue,
           inverse: false,
           assertion,
@@ -71,10 +71,10 @@ describe('isSqlAssertion', () => {
 
     it('should fail when the SQL statement has an incorrect DELETE syntax', async () => {
       const renderedValue = undefined;
-      const outputString = 'DELETE employees WHERE id = 1';
+      const output = 'DELETE employees WHERE id = 1';
       await expect(
         isSqlAssertion({
-          outputString,
+          output,
           renderedValue,
           inverse: false,
           assertion,
@@ -95,8 +95,8 @@ describe('isSqlAssertion', () => {
      */
     // it('should fail when the output string is an invalid SQL statement', () => {
     //   const renderedValue = undefined;
-    //   const outputString = 'SELECT first_name last_name FROM employees';
-    //   const result = testFunction(renderedValue, outputString, false);
+    //   const output = 'SELECT first_name last_name FROM employees';
+    //   const result = testFunction(renderedValue, output, false);
     //   expect(result.pass).toBe(false);
     //   expect(result.reason).toBe('SQL statement does not conform to the provided MySQL database syntax.');
     // });
@@ -107,8 +107,8 @@ describe('isSqlAssertion', () => {
      */
     // it('should fail when the output string is an invalid SQL statement', () => {
     //   const renderedValue = undefined;
-    //   const outputString = 'SELECT * FROM `employees`';
-    //   const result = testFunction(renderedValue, outputString, false);
+    //   const output = 'SELECT * FROM `employees`';
+    //   const result = testFunction(renderedValue, output, false);
     //   expect(result.pass).toBe(false);
     //   expect(result.reason).toBe('SQL statement does not conform to the provided MySQL database syntax.');
     // });
@@ -120,10 +120,10 @@ describe('isSqlAssertion', () => {
       const renderedValue = {
         database: 'PostgreSQL',
       };
-      const outputString = `SELECT * FROM employees WHERE id = 1 LOCK IN SHARE MODE`;
+      const output = `SELECT * FROM employees WHERE id = 1 LOCK IN SHARE MODE`;
       await expect(
         isSqlAssertion({
-          outputString,
+          output,
           renderedValue,
           inverse: false,
           assertion,
@@ -142,10 +142,10 @@ describe('isSqlAssertion', () => {
       const renderedValue = {
         database: 'MySQL',
       };
-      const outputString = `SELECT first_name, last_name FROM employees WHERE first_name ILIKE 'john%'`;
+      const output = `SELECT first_name, last_name FROM employees WHERE first_name ILIKE 'john%'`;
       await expect(
         isSqlAssertion({
-          outputString,
+          output,
           renderedValue,
           inverse: false,
           assertion,
@@ -164,10 +164,10 @@ describe('isSqlAssertion', () => {
       const renderedValue = {
         database: 'PostgreSQL',
       };
-      const outputString = `SELECT first_name, last_name FROM employees WHERE first_name ILIKE 'john%'`;
+      const output = `SELECT first_name, last_name FROM employees WHERE first_name ILIKE 'john%'`;
       await expect(
         isSqlAssertion({
-          outputString,
+          output,
           renderedValue,
           inverse: false,
           assertion,
@@ -190,8 +190,8 @@ describe('isSqlAssertion', () => {
     //   const renderedValue = {
     //     database: 'MySQL',
     //   };
-    //   const outputString = `SELECT generate_series(1, 10);`;
-    //   const result = testFunction(renderedValue, outputString, false);
+    //   const output = `SELECT generate_series(1, 10);`;
+    //   const result = testFunction(renderedValue, output, false);
     //   expect(result.pass).toBe(false);
     //   expect(result.reason).toBe('SQL statement does not conform to the provided MySQL database syntax.');
     // });
@@ -204,10 +204,10 @@ describe('isSqlAssertion', () => {
         database: 'MySQL',
         allowedTables: ['(select|update|insert|delete)::null::departments'],
       };
-      const outputString = `SELECT * FROM employees`;
+      const output = `SELECT * FROM employees`;
       await expect(
         isSqlAssertion({
-          outputString,
+          output,
           renderedValue,
           inverse: false,
           assertion,
@@ -227,10 +227,10 @@ describe('isSqlAssertion', () => {
         database: 'MySQL',
         allowedTables: ['(select|update|insert|delete)::null::departments'],
       };
-      const outputString = `SELECT * FROM departments`;
+      const output = `SELECT * FROM departments`;
       await expect(
         isSqlAssertion({
-          outputString,
+          output,
           renderedValue,
           inverse: false,
           assertion,
@@ -250,10 +250,10 @@ describe('isSqlAssertion', () => {
         database: 'MySQL',
         allowedColumns: ['select::null::name', 'update::null::id'],
       };
-      const outputString = `SELECT id FROM t`;
+      const output = `SELECT id FROM t`;
       await expect(
         isSqlAssertion({
-          outputString,
+          output,
           renderedValue,
           inverse: false,
           assertion,
@@ -273,10 +273,10 @@ describe('isSqlAssertion', () => {
         database: 'MySQL',
         allowedColumns: ['insert::department::dept_name', 'insert::department::location'],
       };
-      const outputString = `INSERT INTO department (dept_name, location) VALUES ('Sales', 'New York')`;
+      const output = `INSERT INTO department (dept_name, location) VALUES ('Sales', 'New York')`;
       await expect(
         isSqlAssertion({
-          outputString,
+          output,
           renderedValue,
           inverse: false,
           assertion,
@@ -303,8 +303,8 @@ describe('isSqlAssertion', () => {
     //     database: 'MySQL',
     //     allowedColumns: ['update::a::id'],
     //   };
-    //   const outputString = `UPDATE a SET id = 1`;
-    //   const result = testFunction(renderedValue, outputString, false);
+    //   const output = `UPDATE a SET id = 1`;
+    //   const result = testFunction(renderedValue, output, false);
     //   expect(result.pass).toBe(true);
     //   expect(result.reason).toBe('Assertion passed');
     // });
@@ -318,8 +318,8 @@ describe('isSqlAssertion', () => {
     //     database: 'MySQL',
     //     allowedColumns: ['update::employee::salary','select::employee::id'],
     //   };
-    //   const outputString = `UPDATE employee SET salary = 50000 WHERE id = 1`;
-    //   const result = testFunction(renderedValue, outputString, false);
+    //   const output = `UPDATE employee SET salary = 50000 WHERE id = 1`;
+    //   const result = testFunction(renderedValue, output, false);
     //   expect(result.pass).toBe(true);
     //   expect(result.reason).toBe('Assertion passed');
     // });

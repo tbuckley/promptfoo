@@ -1,6 +1,7 @@
 import { distance as levenshtein } from 'fastest-levenshtein';
 import { type Option as sqlParserOption } from 'node-sql-parser';
 import util from 'node:util';
+import rouge from 'rouge';
 import invariant from 'tiny-invariant';
 import { BaseAssertion, coerceString } from '.';
 import { GradingResult } from '../../types';
@@ -197,6 +198,30 @@ export function regexAssertion({
     reason: pass
       ? 'Assertion passed'
       : `Expected output to ${inverse ? 'not ' : ''}match regex "${renderedValue}"`,
+    assertion,
+  };
+}
+
+export function rougeScoreAssertion({
+  output,
+  renderedValue,
+  inverse,
+  assertion,
+}: BaseAssertion): GradingResult {
+  invariant(typeof renderedValue === 'string', '"rouge" assertion type must be a string value');
+  const rougeMethod = rouge['n'];
+  const outputString = coerceString(output);
+  const score = rougeMethod(outputString, renderedValue);
+  const pass = score >= (assertion.threshold || 0.75) != inverse;
+
+  return {
+    pass,
+    score: inverse ? 1 - score : score,
+    reason: pass
+      ? `ROUGE-N score ${score.toFixed(
+          2,
+        )} is greater than or equal to threshold ${assertion.threshold || 0.75}`
+      : `ROUGE-N score ${score.toFixed(2)} is less than threshold ${assertion.threshold || 0.75}`,
     assertion,
   };
 }
