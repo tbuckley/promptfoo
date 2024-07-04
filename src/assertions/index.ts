@@ -520,6 +520,207 @@ async function containsSqlAssertion(
   }
 }
 
+async function javascriptAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  valueFromScript: any,
+  output: any,
+  context: any,
+): Promise<GradingResult> {
+  let pass: boolean = false;
+  let score: number = 0.0;
+  try {
+    const validateResult = async (result: any): Promise<boolean | number | GradingResult> => {
+      result = await Promise.resolve(result);
+      if (typeof result === 'boolean' || typeof result === 'number' || isGradingResult(result)) {
+        return result;
+      } else {
+        throw new Error(
+          `Custom function must return a boolean, number, or GradingResult object. Got type ${typeof result}: ${JSON.stringify(
+            result,
+          )}`,
+        );
+      }
+    };
+
+    if (typeof assertion.value === 'function') {
+      let ret = assertion.value(outputString, context);
+      ret = await validateResult(ret);
+      if (!ret.assertion) {
+        // Populate the assertion object if the custom function didn't return it.
+        const functionString = assertion.value.toString();
+        ret.assertion = {
+          type: 'javascript',
+          value: functionString.length > 50 ? functionString.slice(0, 50) + '...' : functionString,
+        };
+      }
+      return ret;
+    }
+    invariant(typeof renderedValue === 'string', 'javascript assertion must have a string value');
+    let result: boolean | number | GradingResult;
+    if (typeof valueFromScript !== 'undefined') {
+      invariant(
+        typeof valueFromScript === 'boolean' ||
+          typeof valueFromScript === 'number' ||
+          typeof valueFromScript === 'object',
+        `Javascript assertion script must return a boolean, number, or object (${assertion.value})`,
+      );
+      result = await validateResult(valueFromScript);
+    } else {
+      const functionBody = renderedValue.includes('\n') ? renderedValue : `return ${renderedValue}`;
+      const customFunction = new Function('output', 'context', functionBody);
+      result = await validateResult(customFunction(output, context));
+    }
+    if (typeof result === 'boolean') {
+      pass = result !== inverse;
+      score = pass ? 1 : 0;
+    } else if (typeof result === 'number') {
+      pass = assertion.threshold ? result >= assertion.threshold : result > 0;
+      score = result;
+    } else if (typeof result === 'object') {
+      return result;
+    } else {
+      throw new Error('Custom function must return a boolean or number');
+    }
+  } catch (err) {
+    return {
+      pass: false,
+      score: 0,
+      reason: `Custom function threw error: ${(err as Error).message}
+Stack Trace: ${(err as Error).stack}
+${renderedValue}`,
+      assertion,
+    };
+  }
+  return {
+    pass,
+    score,
+    reason: pass
+      ? 'Assertion passed'
+      : `Custom function returned ${inverse ? 'true' : 'false'}
+${renderedValue}`,
+    assertion,
+  };
+}
+
+async function pythonAssertion(
+  outputString: string,
+  renderedValue: AssertionValue | undefined,
+  inverse: boolean,
+  assertion: Assertion,
+  valueFromScript: any,
+  output: any,
+  context: any,
+): Promise<GradingResult> {
+  let pass: boolean = false;
+  let score: number = 0.0;
+  invariant(typeof renderedValue === 'string', 'python assertion must have a string value');
+  try {
+    let result: string | number | boolean | object | GradingResult | undefined;
+    if (typeof valueFromScript !== 'undefined') {
+      result = valueFromScript;
+    } else {
+      const isMultiline = renderedValue.includes('\n');
+      let indentStyle = '    ';
+      if (isMultiline) {
+        // Detect the indentation style of the first indented line
+        const match = renderedValue.match(/^(?!\s*$)\s+/m);
+        if (match) {
+          indentStyle = match[0];
+        }
+      }
+
+      const pythonScript = `import json
+
+def main(output, context):
+${
+  isMultiline
+    ? renderedValue
+        .split('\n')
+        .map((line) => `${indentStyle}${line}`)
+        .join('\n')
+    : `    return ${renderedValue}`
+}
+`;
+      result = await runPythonCode(pythonScript, 'main', [output, context]);
+    }
+
+    if (
+      (typeof result === 'boolean' && result) ||
+      (typeof result === 'string' && result.toLowerCase() === 'true')
+    ) {
+      pass = true;
+      score = 1.0;
+    } else if (
+      (typeof result === 'boolean' && !result) ||
+      (typeof result === 'string' && result.toLowerCase() === 'false')
+    ) {
+      pass = false;
+      score = 0.0;
+    } else if (typeof result === 'string' && result.startsWith('{')) {
+      let parsed;
+      try {
+        parsed = JSON.parse(result);
+      } catch (err) {
+        throw new Error(`Invalid JSON: ${err} when parsing result: ${result}`);
+      }
+      if (!isGradingResult(parsed)) {
+        throw new Error(
+          `Python assertion must return a boolean, number, or {pass, score, reason} object. Got instead: ${result}`,
+        );
+      }
+      return parsed;
+    } else if (typeof result === 'object') {
+      if (!isGradingResult(result)) {
+        throw new Error(
+          `Python assertion must return a boolean, number, or {pass, score, reason} object. Got instead:\n${JSON.stringify(
+            result,
+            null,
+            2,
+          )}`,
+        );
+      }
+      const pythonGradingResult = result as Omit<GradingResult, 'assertion'>;
+      if (assertion.threshold && pythonGradingResult.score < assertion.threshold) {
+        pythonGradingResult.pass = false;
+        pythonGradingResult.reason = `Python score ${pythonGradingResult.score} is less than threshold ${assertion.threshold}`;
+      }
+      return {
+        ...pythonGradingResult,
+        assertion,
+      };
+    } else {
+      score = parseFloat(String(result));
+      pass = assertion.threshold ? score >= assertion.threshold : score > 0;
+      if (isNaN(score)) {
+        throw new Error(
+          `Python assertion must return a boolean, number, or {pass, score, reason} object. Instead got:\n${result}`,
+        );
+      }
+      if (typeof assertion.threshold !== 'undefined' && score < assertion.threshold) {
+        pass = false;
+      }
+    }
+  } catch (err) {
+    return {
+      pass: false,
+      score: 0,
+      reason: `Python code execution failed: ${(err as Error).message}`,
+      assertion,
+    };
+  }
+  return {
+    pass,
+    score,
+    reason: pass
+      ? 'Assertion passed'
+      : `Python code returned ${pass ? 'true' : 'false'}\n${assertion.value}`,
+    assertion,
+  };
+}
+
 export async function runAssertion({
   prompt,
   provider,
@@ -750,187 +951,27 @@ export async function runAssertion({
   }
 
   if (baseType === 'javascript') {
-    try {
-      const validateResult = async (result: any): Promise<boolean | number | GradingResult> => {
-        result = await Promise.resolve(result);
-        if (typeof result === 'boolean' || typeof result === 'number' || isGradingResult(result)) {
-          return result;
-        } else {
-          throw new Error(
-            `Custom function must return a boolean, number, or GradingResult object. Got type ${typeof result}: ${JSON.stringify(
-              result,
-            )}`,
-          );
-        }
-      };
-
-      if (typeof assertion.value === 'function') {
-        let ret = assertion.value(outputString, context);
-        ret = await validateResult(ret);
-        if (!ret.assertion) {
-          // Populate the assertion object if the custom function didn't return it.
-          const functionString = assertion.value.toString();
-          ret.assertion = {
-            type: 'javascript',
-            value:
-              functionString.length > 50 ? functionString.slice(0, 50) + '...' : functionString,
-          };
-        }
-        return ret;
-      }
-      invariant(typeof renderedValue === 'string', 'javascript assertion must have a string value');
-      let result: boolean | number | GradingResult;
-      if (typeof valueFromScript !== 'undefined') {
-        invariant(
-          typeof valueFromScript === 'boolean' ||
-            typeof valueFromScript === 'number' ||
-            typeof valueFromScript === 'object',
-          `Javascript assertion script must return a boolean, number, or object (${assertion.value})`,
-        );
-        result = await validateResult(valueFromScript);
-      } else {
-        const functionBody = renderedValue.includes('\n')
-          ? renderedValue
-          : `return ${renderedValue}`;
-        const customFunction = new Function('output', 'context', functionBody);
-        result = await validateResult(customFunction(output, context));
-      }
-      if (typeof result === 'boolean') {
-        pass = result !== inverse;
-        score = pass ? 1 : 0;
-      } else if (typeof result === 'number') {
-        pass = assertion.threshold ? result >= assertion.threshold : result > 0;
-        score = result;
-      } else if (typeof result === 'object') {
-        return result;
-      } else {
-        throw new Error('Custom function must return a boolean or number');
-      }
-    } catch (err) {
-      return {
-        pass: false,
-        score: 0,
-        reason: `Custom function threw error: ${(err as Error).message}
-Stack Trace: ${(err as Error).stack}
-${renderedValue}`,
-        assertion,
-      };
-    }
-    return {
-      pass,
-      score,
-      reason: pass
-        ? 'Assertion passed'
-        : `Custom function returned ${inverse ? 'true' : 'false'}
-${renderedValue}`,
+    return javascriptAssertion(
+      outputString,
+      renderedValue,
+      inverse,
       assertion,
-    };
+      valueFromScript,
+      output,
+      context,
+    );
   }
 
   if (baseType === 'python') {
-    invariant(typeof renderedValue === 'string', 'python assertion must have a string value');
-    try {
-      let result: string | number | boolean | object | GradingResult | undefined;
-      if (typeof valueFromScript !== 'undefined') {
-        result = valueFromScript;
-      } else {
-        const isMultiline = renderedValue.includes('\n');
-        let indentStyle = '    ';
-        if (isMultiline) {
-          // Detect the indentation style of the first indented line
-          const match = renderedValue.match(/^(?!\s*$)\s+/m);
-          if (match) {
-            indentStyle = match[0];
-          }
-        }
-
-        const pythonScript = `import json
-
-def main(output, context):
-${
-  isMultiline
-    ? renderedValue
-        .split('\n')
-        .map((line) => `${indentStyle}${line}`)
-        .join('\n')
-    : `    return ${renderedValue}`
-}
-`;
-        result = await runPythonCode(pythonScript, 'main', [output, context]);
-      }
-
-      if (
-        (typeof result === 'boolean' && result) ||
-        (typeof result === 'string' && result.toLowerCase() === 'true')
-      ) {
-        pass = true;
-        score = 1.0;
-      } else if (
-        (typeof result === 'boolean' && !result) ||
-        (typeof result === 'string' && result.toLowerCase() === 'false')
-      ) {
-        pass = false;
-        score = 0.0;
-      } else if (typeof result === 'string' && result.startsWith('{')) {
-        let parsed;
-        try {
-          parsed = JSON.parse(result);
-        } catch (err) {
-          throw new Error(`Invalid JSON: ${err} when parsing result: ${result}`);
-        }
-        if (!isGradingResult(parsed)) {
-          throw new Error(
-            `Python assertion must return a boolean, number, or {pass, score, reason} object. Got instead: ${result}`,
-          );
-        }
-        return parsed;
-      } else if (typeof result === 'object') {
-        if (!isGradingResult(result)) {
-          throw new Error(
-            `Python assertion must return a boolean, number, or {pass, score, reason} object. Got instead:\n${JSON.stringify(
-              result,
-              null,
-              2,
-            )}`,
-          );
-        }
-        const pythonGradingResult = result as Omit<GradingResult, 'assertion'>;
-        if (assertion.threshold && pythonGradingResult.score < assertion.threshold) {
-          pythonGradingResult.pass = false;
-          pythonGradingResult.reason = `Python score ${pythonGradingResult.score} is less than threshold ${assertion.threshold}`;
-        }
-        return {
-          ...pythonGradingResult,
-          assertion,
-        };
-      } else {
-        score = parseFloat(String(result));
-        pass = assertion.threshold ? score >= assertion.threshold : score > 0;
-        if (isNaN(score)) {
-          throw new Error(
-            `Python assertion must return a boolean, number, or {pass, score, reason} object. Instead got:\n${result}`,
-          );
-        }
-        if (typeof assertion.threshold !== 'undefined' && score < assertion.threshold) {
-          pass = false;
-        }
-      }
-    } catch (err) {
-      return {
-        pass: false,
-        score: 0,
-        reason: `Python code execution failed: ${(err as Error).message}`,
-        assertion,
-      };
-    }
-    return {
-      pass,
-      score,
-      reason: pass
-        ? 'Assertion passed'
-        : `Python code returned ${pass ? 'true' : 'false'}\n${assertion.value}`,
+    return pythonAssertion(
+      outputString,
+      renderedValue,
+      inverse,
       assertion,
-    };
+      valueFromScript,
+      output,
+      context,
+    );
   }
 
   if (baseType === 'similar') {
