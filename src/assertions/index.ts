@@ -1379,7 +1379,6 @@ export async function runAssertion({
     });
   }
 
-  const outputString = coerceString(output);
 
   const context = {
     prompt,
@@ -1442,10 +1441,9 @@ export async function runAssertion({
     renderedValue = renderedValue.map((v) => nunjucks.renderString(String(v), test.vars || {}));
   }
 
-  // Transform test
-  test = getFinalTest(test, assertion);
+  const outputString = coerceString(output);
 
-  const baseAssertionMap: { [key: string]: Function } = {
+  const baseAssertionMap: { [key: string]: (options: BaseAssertion) => GradingResult | Promise<GradingResult> } = {
     'contains-all': containsAllAssertion,
     'contains-any': containsAnyAssertion,
     'contains-sql': containsSqlAssertion,
@@ -1459,9 +1457,13 @@ export async function runAssertion({
     regex: regexAssertion,
     'starts-with': startsWithAssertion,
   };
+
   if (baseAssertionMap[baseType]) {
     return baseAssertionMap[baseType]({ outputString, renderedValue, inverse, assertion });
   }
+
+  // Transform test
+  test = getFinalTest(test, assertion);
 
   if (baseType === 'is-json') {
     return isJsonAssertion(outputString, renderedValue, inverse, assertion, valueFromScript);
