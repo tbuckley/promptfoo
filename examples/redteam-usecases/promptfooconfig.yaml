@@ -1,0 +1,7 @@
+providers:
+- id: openai:gpt-4o
+prompts:
+- id: file://./tweet.json
+tests:
+  - vars:
+      query: "What is the most important thing to remember about electric vehicles?"
