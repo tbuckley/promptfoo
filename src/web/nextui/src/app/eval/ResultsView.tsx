@@ -9,10 +9,10 @@ import SettingsIcon from '@mui/icons-material/Settings';
 import ShareIcon from '@mui/icons-material/Share';
 import EyeIcon from '@mui/icons-material/Visibility';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import Autocomplete, { AutocompleteRenderInputParams } from '@mui/material/Autocomplete';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Checkbox from '@mui/material/Checkbox';
+import Chip from '@mui/material/Chip';
 import CircularProgress from '@mui/material/CircularProgress';
 import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
@@ -22,10 +22,11 @@ import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import OutlinedInput from '@mui/material/OutlinedInput';
 import Select, { SelectChangeEvent } from '@mui/material/Select';
+import Snackbar from '@mui/material/Snackbar';
 import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Tooltip from '@mui/material/Tooltip';
-import Heading from '@mui/material/Typography';
+import Typography from '@mui/material/Typography';
 import { styled } from '@mui/system';
 import type { VisibilityState } from '@tanstack/table-core';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -33,12 +34,13 @@ import invariant from 'tiny-invariant';
 import { useDebounce } from 'use-debounce';
 import ConfigModal from './ConfigModal';
 import DownloadMenu from './DownloadMenu';
+import EvalSelector from './EvalSelector';
 import ResultsCharts from './ResultsCharts';
 import ResultsTable from './ResultsTable';
 import SettingsModal from './ResultsViewSettingsModal';
 import ShareModal from './ShareModal';
 import { useStore as useResultsViewStore } from './store';
-import type { FilterMode } from './types';
+import type { FilterMode, ResultLightweightWithLabel } from './types';
 import './ResultsView.css';
 
 const ResponsiveStack = styled(Stack)(({ theme }) => ({
@@ -50,10 +52,7 @@ const ResponsiveStack = styled(Stack)(({ theme }) => ({
 }));
 
 interface ResultsViewProps {
-  recentEvals: {
-    id: string;
-    label: string;
-  }[];
+  recentEvals: ResultLightweightWithLabel[];
   onRecentEvalSelected: (file: string) => void;
   defaultEvalId?: string;
 }
@@ -65,8 +64,16 @@ export default function ResultsView({
 }: ResultsViewProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { table, config, setConfig, maxTextLength, wordBreak, showInferenceDetails, evalId } =
-    useResultsViewStore();
+  const {
+    author,
+    table,
+    config,
+    setConfig,
+    maxTextLength,
+    wordBreak,
+    showInferenceDetails,
+    evalId,
+  } = useResultsViewStore();
   const { setStateFromConfig } = useMainStore();
 
   const [searchText, setSearchText] = React.useState(searchParams?.get('search') || '');
@@ -134,8 +141,14 @@ export default function ResultsView({
     }
   };
 
+  const hasAnyDescriptions = React.useMemo(
+    () => table.body.some((row) => row.description),
+    [table.body],
+  );
+
   const columnData = React.useMemo(() => {
     return [
+      ...(hasAnyDescriptions ? [{ value: 'description', label: 'Description' }] : []),
       ...head.vars.map((_, idx) => ({
         value: `Variable ${idx + 1}`,
         label: `Var ${idx + 1}: ${
@@ -153,7 +166,7 @@ export default function ResultsView({
         };
       }),
     ];
-  }, [head.vars, head.prompts]);
+  }, [head.vars, head.prompts, hasAnyDescriptions]);
 
   const [configModalOpen, setConfigModalOpen] = React.useState(false);
   const [viewSettingsModalOpen, setViewSettingsModalOpen] = React.useState(false);
@@ -169,6 +182,7 @@ export default function ResultsView({
     setSelectedColumns(typeof value === 'string' ? value.split(',') : value);
 
     const allColumns = [
+      ...(hasAnyDescriptions ? ['description'] : []),
       ...head.vars.map((_, idx) => `Variable ${idx + 1}`),
       ...head.prompts.map((_, idx) => `Prompt ${idx + 1}`),
     ];
@@ -234,48 +248,80 @@ export default function ResultsView({
     setAnchorEl(event.currentTarget);
   };
 
-  return (
-    <div>
-      <Box mx={1} mb={2} sx={{ display: 'flex', alignItems: 'center' }}>
-        <Heading variant="h5" sx={{ flexGrow: 1 }}>
-          <span className="description" onClick={handleDescriptionClick}>
-            {config?.description || evalId}
-          </span>{' '}
-          {config?.description && <span className="description-filepath">{evalId}</span>}
-        </Heading>
-      </Box>
-      <ResponsiveStack direction="row" spacing={4} alignItems="center">
-        <Box>
-          {recentEvals && recentEvals.length > 0 && (
-            <FormControl sx={{ m: 1, minWidth: 200 }} size="small">
-              <Autocomplete
-                size="small"
-                options={recentEvals}
-                renderOption={(props, option) => (
-                  <li {...props} key={option.id}>
-                    {option.label}
-                  </li>
-                )}
-                style={{ width: 350 }}
-                renderInput={(params: AutocompleteRenderInputParams) => (
-                  <TextField {...params} label="Eval run" variant="outlined" />
-                )}
-                defaultValue={recentEvals.find((evl) => evl.id === defaultEvalId) || recentEvals[0]}
-                onChange={(event, newValue: { label: string; id?: string } | null) => {
-                  if (newValue && newValue.id) {
-                    onRecentEvalSelected(newValue.id);
+  const [evalIdCopied, setEvalIdCopied] = React.useState(false);
 
-                    // Reset all filters and search
-                    setSearchText('');
-                    setFilterMode('all');
-                    setFailureFilter({});
-                  }
+  const handleEvalIdCopyClick = async () => {
+    if (!evalId) {
+      return;
+    }
+    await navigator.clipboard.writeText(evalId);
+    setEvalIdCopied(true);
+    setTimeout(() => {
+      setEvalIdCopied(false);
+    }, 1000);
+  };
+
+  return (
+    <div style={{ marginLeft: '1rem', marginRight: '1rem' }}>
+      <ResponsiveStack
+        direction="row"
+        mb={2}
+        spacing={1}
+        alignItems="center"
+        className="eval-header"
+      >
+        {recentEvals && recentEvals.length > 0 && (
+          <EvalSelector
+            recentEvals={recentEvals}
+            onRecentEvalSelected={onRecentEvalSelected}
+            currentEval={recentEvals.find((evl) => evl.evalId === evalId) || null}
+          />
+        )}
+        <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center' }}>
+          <Tooltip title="Click to edit description">
+            <span className="description" onClick={handleDescriptionClick}>
+              {config?.description || evalId}
+            </span>
+          </Tooltip>
+        </Typography>
+        {config?.description && evalId && (
+          <>
+            <Tooltip title="Click to copy">
+              <Chip
+                size="small"
+                label={
+                  <>
+                    <strong>ID:</strong> {evalId}
+                  </>
+                }
+                sx={{
+                  opacity: 0.7,
+                  cursor: 'pointer',
                 }}
-                disableClearable
+                onClick={handleEvalIdCopyClick}
               />
-            </FormControl>
-          )}
-        </Box>
+            </Tooltip>
+            <Snackbar
+              open={evalIdCopied}
+              autoHideDuration={1000}
+              onClose={() => setEvalIdCopied(false)}
+              message="Eval id copied to clipboard"
+            />
+          </>
+        )}
+        <Tooltip title={!author ? 'Set eval author with `promptfoo config set email`' : ''}>
+          <Chip
+            size="small"
+            label={
+              <>
+                <strong>Author:</strong> {author || 'Unknown'}
+              </>
+            }
+            sx={{ opacity: 0.7 }}
+          />
+        </Tooltip>
+      </ResponsiveStack>
+      <ResponsiveStack direction="row" spacing={4} alignItems="center">
         <Box>
           <FormControl sx={{ m: 1, minWidth: 200, maxWidth: 350 }} size="small">
             <InputLabel id="visible-columns-label">Columns</InputLabel>
