@@ -23,6 +23,8 @@ import telemetry from '../telemetry';
 import { Prompt, TestSuite } from '../types';
 import { doGenerateRedteam } from './generate/redteam';
 
+const DEFAULT_NUM_TESTS = 5;
+
 export function redteamCommand(program: Command) {
   const redteamCommand = program.command('redteam').description('Red team LLM applications');
 
@@ -147,49 +149,84 @@ export function redteamCommand(program: Command) {
         }
       }
 
-      // Question: Plugins
-      const pluginChoices = Array.from(ALL_PLUGINS)
-        .sort()
-        .map((plugin) => ({
-          name: `${plugin} - ${subCategoryDescriptions[plugin] || 'No description available'}`,
-          value: plugin,
-          checked:
-            existingConfig?.redteam?.plugins.some((p) => p.id === plugin || p === plugin) ||
-            DEFAULT_PLUGINS.has(plugin),
-        }));
-
-      const plugins = await checkbox({
-        message: 'Select the plugins you want to enable:',
-        choices: pluginChoices,
-        pageSize: 20,
+      const suggestTestCases = await confirm({
+        message: 'Would you like us to suggest plugins and strategies?',
+        default: true,
       });
 
-      // select strategies
+      let plugins: string[] = [];
+      let strategies: string[] = [];
+      let numTests: number = DEFAULT_NUM_TESTS;
 
-      const strategyChoices = Array.from(ALL_STRATEGIES)
-        .sort()
-        .map((strategy) => ({
-          name: strategy,
-          value: strategy,
-          checked:
-            existingConfig?.redteam?.strategies?.some(
-              (s) => s.id === strategy || (typeof s === 'string' && s === strategy),
-            ) || DEFAULT_STRATEGIES.includes(strategy),
-        }));
+      if (suggestTestCases) {
+        const redteamSize = await rawlist({
+          message: 'Choose the size of the redteam:',
+          choices: [
+            { name: 'Small', value: 'small' },
+            { name: 'Medium', value: 'medium' },
+            { name: 'Large', value: 'large' },
+          ],
+        });
 
-      const strategies = await checkbox({
-        message: 'Select the strategies you want to enable:',
-        choices: strategyChoices,
-        pageSize: 20,
-      });
+        switch (redteamSize) {
+          case 'small':
+            numTests = DEFAULT_NUM_TESTS;
+            break;
+          case 'medium':
+            numTests = 20;
+            break;
+          case 'large':
+            numTests = 50;
+            break;
+        }
 
-      const numTests = await number({
-        message: 'How many test cases do you want to generate per plugin?',
-        default: 5,
-        min: 0,
-        max: 1000,
-      });
-      invariant(numTests, 'No number of tests provided');
+        // TODO: add selection logic here
+        plugins = Array.from(DEFAULT_PLUGINS);
+        strategies = DEFAULT_STRATEGIES;
+      } else {
+        // Question: Plugins
+        const pluginChoices = Array.from(ALL_PLUGINS)
+          .sort()
+          .map((plugin) => ({
+            name: `${plugin} - ${subCategoryDescriptions[plugin] || 'No description available'}`,
+            value: plugin,
+            checked:
+              existingConfig?.redteam?.plugins.some((p) => p.id === plugin || p === plugin) ||
+              DEFAULT_PLUGINS.has(plugin),
+          }));
+
+        plugins = await checkbox({
+          message: 'Select the plugins you want to enable:',
+          choices: pluginChoices,
+          pageSize: 20,
+        });
+
+        // select strategies
+        const strategyChoices = Array.from(ALL_STRATEGIES)
+          .sort()
+          .map((strategy) => ({
+            name: strategy,
+            value: strategy,
+            checked:
+              existingConfig?.redteam?.strategies?.some(
+                (s) => s.id === strategy || (typeof s === 'string' && s === strategy),
+              ) || DEFAULT_STRATEGIES.includes(strategy),
+          }));
+
+        strategies = await checkbox({
+          message: 'Select the strategies you want to enable:',
+          choices: strategyChoices,
+          pageSize: 20,
+        });
+
+        numTests = (await number({
+          message: 'How many test cases do you want to generate per plugin?',
+          default: DEFAULT_NUM_TESTS,
+          min: 0,
+          max: 1000,
+        })) as number;
+        invariant(numTests, 'No number of tests provided');
+      }
 
       // Create config file
       const config = {
