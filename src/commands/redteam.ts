@@ -150,7 +150,8 @@ export function redteamCommand(program: Command) {
       }
 
       const suggestTestCases = await confirm({
-        message: 'Would you like us to suggest plugins and strategies?',
+        message:
+          'Would you like us to automatically suggest plugins and strategies based on your prompt?',
         default: true,
       });
 
@@ -184,7 +185,6 @@ export function redteamCommand(program: Command) {
         plugins = Array.from(DEFAULT_PLUGINS);
         strategies = DEFAULT_STRATEGIES;
       } else {
-        // Question: Plugins
         const pluginChoices = Array.from(ALL_PLUGINS)
           .sort()
           .map((plugin) => ({
