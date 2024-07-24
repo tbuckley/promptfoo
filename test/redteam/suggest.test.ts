@@ -1,6 +1,4 @@
-import dedent from 'dedent';
 import { XMLParser } from 'fast-xml-parser';
-import { subCategoryDescriptions } from '../../src/redteam/constants';
 import { suggestPlugins } from '../../src/redteam/suggest';
 import { ApiProvider } from '../../src/types';
 
@@ -12,7 +10,7 @@ class MockApiProvider implements ApiProvider {
     const parsedPrompt = parser.parse(prompt);
     const prompts: string[] = Object.values(parsedPrompt.prompts);
 
-    let suggestions = new Set<string>();
+    const suggestions = new Set<string>();
 
     for (const prompt of prompts) {
       if (
