@@ -172,11 +172,6 @@ export function redteamCommand(program: Command) {
           ],
         });
 
-        /*
-        export const DEFAULT_STRATEGIES = ['jailbreak', 'prompt-injection'];
-        export const ADDITIONAL_STRATEGIES = ['experimental-jailbreak', 'experimental-tree-jailbreak'];
-        */
-
         switch (redteamSize) {
           case 'small':
             numTests = DEFAULT_NUM_TESTS;
