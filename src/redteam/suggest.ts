@@ -64,10 +64,9 @@ export async function suggestPlugins(provider: ApiProvider, prompts: string[]): 
       if (parsedSuggestions && parsedSuggestions.suggestions) {
         logger.debug('Processing parsed suggestions');
         for (const [plugin, score] of Object.entries(parsedSuggestions.suggestions)) {
-          const originalPluginName = plugin; // .replace('_', ':');
-          if (score === 1 && Object.keys(subCategoryDescriptions).includes(originalPluginName)) {
-            suggestedPlugins.add(originalPluginName);
-            logger.debug(`Added plugin: ${originalPluginName}`);
+          if (score === 1 && ALL_PLUGINS.includes(plugin)) {
+            suggestedPlugins.add(plugin);
+            logger.debug(`Added plugin: ${plugin}`);
           }
         }
       }
