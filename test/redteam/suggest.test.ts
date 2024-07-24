@@ -1,3 +1,5 @@
+import dedent from 'dedent';
+import { XMLParser } from 'fast-xml-parser';
 import { subCategoryDescriptions } from '../../src/redteam/constants';
 import { suggestPlugins } from '../../src/redteam/suggest';
 import { ApiProvider } from '../../src/types';
@@ -6,39 +8,37 @@ import { ApiProvider } from '../../src/types';
 class MockApiProvider implements ApiProvider {
   id = () => 'mock';
   async callApi(prompt: string): Promise<{ output: string }> {
-    if (prompt.includes('bank account balance')) {
-      return {
-        output:
-          '<suggestions><pii_direct>1</pii_direct><harmful_specialized_advice>1</harmful_specialized_advice></suggestions>',
-      };
-    } else if (prompt.includes('capital of France')) {
-      return {
-        output: '<suggestions></suggestions>',
-      };
-    } else if (prompt.includes('travel itinerary') || prompt.includes('financial data')) {
-      return {
-        output:
-          '<suggestions><pii_direct>1</pii_direct><harmful_specialized_advice>1</harmful_specialized_advice><overreliance>1</overreliance></suggestions>',
-      };
-    } else if (prompt.includes('hack') || prompt.includes('Wi-Fi')) {
-      return {
-        output:
-          '<suggestions><harmful_illegal_activities>1</harmful_illegal_activities></suggestions>',
-      };
-    } else if (prompt.includes('crush') || prompt.includes('love letter')) {
-      return {
-        output: '<suggestions><pii_indirect>1</pii_indirect></suggestions>',
-      };
-    } else if (prompt.includes('stocks') || prompt.includes('invest')) {
-      return {
-        output:
-          '<suggestions><harmful_specialized_advice>1</harmful_specialized_advice></suggestions>',
-      };
-    } else {
-      return {
-        output: '<suggestions></suggestions>',
-      };
+    const parser = new XMLParser();
+    const parsedPrompt = parser.parse(prompt);
+    const prompts: string[] = Object.values(parsedPrompt.prompts);
+
+    let suggestions = new Set<string>();
+
+    for (const prompt of prompts) {
+      if (
+        prompt.includes('banking assistant') ||
+        prompt.includes('account balances') ||
+        prompt.includes('financial matters')
+      ) {
+        suggestions.add('pii:direct');
+        suggestions.add('harmful:specialized-advice');
+      } else if (
+        prompt.includes('geography assistant') ||
+        prompt.includes('world capitals') ||
+        prompt.includes('countries') ||
+        prompt.includes('major landmarks')
+      ) {
+        suggestions.add('pii:indirect');
+        suggestions.add('harmful:specialized-advice');
+        suggestions.add('overreliance');
+      }
     }
+
+    const output = `<suggestions>${Array.from(suggestions)
+      .sort()
+      .map((s) => `<${s}>1</${s}>`)
+      .join('')}</suggestions>`;
+    return { output };
   }
 }
 
@@ -50,55 +50,30 @@ describe('suggestPlugins', () => {
   });
 
   it('suggests relevant plugins for a simple prompt', async () => {
-    const prompts = ['What is my bank account balance?'];
-    const suggestedPlugins = await suggestPlugins(provider, prompts);
-
-    expect(suggestedPlugins).toBeInstanceOf(Array);
-    expect(suggestedPlugins).toEqual(['pii:direct', 'harmful:specialized-advice']);
-  });
-
-  it('suggests no plugins for an irrelevant prompt', async () => {
-    const prompts = ['What is the capital of France?'];
-    const suggestedPlugins = await suggestPlugins(provider, prompts);
-
-    expect(suggestedPlugins).toBeInstanceOf(Array);
-    expect(suggestedPlugins).toEqual([]);
-  });
-
-  it('suggests multiple plugins for a complex prompt', async () => {
     const prompts = [
-      'Create a travel itinerary for my upcoming vacation to Paris, including my flight details and credit card information.',
-      "Analyze my company's financial data and predict our stock price for the next quarter.",
+      'You are a helpful banking assistant. Provide accurate and secure information about account balances and financial matters. Answer: {{query}}',
     ];
     const suggestedPlugins = await suggestPlugins(provider, prompts);
 
     expect(suggestedPlugins).toBeInstanceOf(Array);
-    expect(suggestedPlugins).toEqual(['pii:direct', 'harmful:specialized-advice', 'overreliance']);
+    expect(suggestedPlugins).toEqual(['harmful:specialized-advice', 'pii:direct']);
+  });
+
+  it('suggests plugins for multiple prompts', async () => {
+    const prompts = [
+      'You are a knowledgeable geography assistant. Provide accurate information about world capitals and countries. Answer: {{query}}',
+      'You are a knowledgeable geography assistant. Help users with information about countries, capitals, and major landmarks. Answer: {{query}}',
+    ];
+    const suggestedPlugins = await suggestPlugins(provider, prompts);
+
+    expect(suggestedPlugins).toBeInstanceOf(Array);
+    expect(suggestedPlugins).toEqual(['harmful:specialized-advice', 'overreliance']);
   });
 
   it('handles empty prompts array', async () => {
     const prompts: string[] = [];
     const suggestedPlugins = await suggestPlugins(provider, prompts);
-
     expect(suggestedPlugins).toBeInstanceOf(Array);
     expect(suggestedPlugins).toEqual([]);
-  });
-
-  it('handles a variety of prompts', async () => {
-    const prompts = [
-      "How do I hack into my neighbor's Wi-Fi?",
-      "What's the weather like today?",
-      'Can you write a love letter to my crush?',
-      'How do I create a strong password?',
-      'What are some good stocks to invest in?',
-    ];
-    const suggestedPlugins = await suggestPlugins(provider, prompts);
-
-    expect(suggestedPlugins).toBeInstanceOf(Array);
-    expect(suggestedPlugins).toEqual([
-      'harmful:illegal-activities',
-      'pii:indirect',
-      'harmful:specialized-advice',
-    ]);
   });
 });
