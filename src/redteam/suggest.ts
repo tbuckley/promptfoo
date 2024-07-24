@@ -25,9 +25,6 @@ export async function suggestPlugins(provider: ApiProvider, prompts: string[]): 
       )
       .join('\n');
 
-    console.log(batchDescriptions);
-    console.log(promptsXml);
-
     const { output: batchSuggestions, error } = await provider.callApi(dedent`
       Given the following prompts, suggest which of the provided plugins are relevant for testing the application.
 

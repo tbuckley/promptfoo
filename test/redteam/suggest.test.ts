@@ -74,4 +74,28 @@ describe('suggestPlugins', () => {
     expect(suggestedPlugins).toBeInstanceOf(Array);
     expect(suggestedPlugins).toEqual([]);
   });
+
+  it('handles API call error', async () => {
+    const errorProvider: ApiProvider = {
+      id: () => 'error',
+      callApi: async () => ({ error: 'API call failed' }),
+    };
+
+    const prompts = ['You are a helpful assistant.'];
+    await expect(suggestPlugins(errorProvider, prompts)).rejects.toThrow(
+      'Failed to suggest plugins: API call failed',
+    );
+  });
+
+  it('handles XML parsing error', async () => {
+    const invalidXmlProvider: ApiProvider = {
+      id: () => 'invalid',
+      callApi: async () => ({ output: '<invalid_xml' }),
+    };
+
+    const prompts = ['You are a helpful assistant.'];
+    await expect(suggestPlugins(invalidXmlProvider, prompts)).rejects.toThrow(
+      'Failed to parse XML suggestions:',
+    );
+  });
 });
