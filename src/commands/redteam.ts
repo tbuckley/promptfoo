@@ -158,7 +158,7 @@ export function redteamCommand(program: Command) {
         default: true,
       });
 
-      let plugins: string[] = [];
+      let plugins: (typeof ALL_PLUGINS)[number][] = [];
       let strategies: (typeof ALL_STRATEGIES)[number][] = [];
       let numTests: number = DEFAULT_NUM_TESTS;
 
