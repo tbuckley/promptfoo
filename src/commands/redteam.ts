@@ -11,16 +11,19 @@ import yaml from 'js-yaml';
 import * as path from 'path';
 import invariant from 'tiny-invariant';
 import logger from '../logger';
+import { loadApiProvider } from '../providers';
 import {
   ALL_PLUGINS,
   ALL_STRATEGIES,
   DEFAULT_PLUGINS,
   DEFAULT_STRATEGIES,
+  REDTEAM_MODEL,
   subCategoryDescriptions,
 } from '../redteam/constants';
+import { suggestPlugins } from '../redteam/suggest';
 import { redteamConfigSchema } from '../redteam/types';
 import telemetry from '../telemetry';
-import { Prompt, TestSuite } from '../types';
+import { ApiProvider, Prompt, TestSuite } from '../types';
 import { doGenerateRedteam } from './generate/redteam';
 
 const DEFAULT_NUM_TESTS = 5;
@@ -156,7 +159,7 @@ export function redteamCommand(program: Command) {
       });
 
       let plugins: string[] = [];
-      let strategies: string[] = [];
+      let strategies: (typeof ALL_STRATEGIES)[number][] = [];
       let numTests: number = DEFAULT_NUM_TESTS;
 
       if (suggestTestCases) {
@@ -169,21 +172,38 @@ export function redteamCommand(program: Command) {
           ],
         });
 
+        /*
+        export const DEFAULT_STRATEGIES = ['jailbreak', 'prompt-injection'];
+        export const ADDITIONAL_STRATEGIES = ['experimental-jailbreak', 'experimental-tree-jailbreak'];
+        */
+
         switch (redteamSize) {
           case 'small':
             numTests = DEFAULT_NUM_TESTS;
+            strategies.push('experimental-jailbreak', 'prompt-injection');
             break;
           case 'medium':
-            numTests = 20;
+            numTests = DEFAULT_NUM_TESTS * 2;
+            strategies.push('experimental-jailbreak', 'jailbreak', 'prompt-injection');
             break;
           case 'large':
-            numTests = 50;
+            numTests = DEFAULT_NUM_TESTS * 3;
+            strategies.push(
+              'experimental-jailbreak',
+              'experimental-tree-jailbreak',
+              'jailbreak',
+              'prompt-injection',
+            );
             break;
         }
-
-        // TODO: add selection logic here
-        plugins = Array.from(DEFAULT_PLUGINS);
-        strategies = DEFAULT_STRATEGIES;
+        const provider: ApiProvider = await loadApiProvider(REDTEAM_MODEL, {
+          options: {
+            config: { temperature: 0.5 },
+          },
+        });
+        invariant(prompts.length > 0, 'No prompts provided');
+        plugins = await suggestPlugins(provider, prompts as string[]);
+        logger.info(`Suggested plugins: ${plugins.join(', ')}`);
       } else {
         const pluginChoices = Array.from(ALL_PLUGINS)
           .sort()
