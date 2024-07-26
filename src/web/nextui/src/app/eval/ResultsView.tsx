@@ -425,6 +425,7 @@ export default function ResultsView({
               label="Filter"
             >
               <MenuItem value="all">Show all results</MenuItem>
+              <MenuItem value="passing">Show passing only</MenuItem>
               <MenuItem value="failures">Show failures only</MenuItem>
               <MenuItem value="different">Show different only</MenuItem>
               <MenuItem value="highlights">Show highlights only</MenuItem>

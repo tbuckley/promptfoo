@@ -1,14 +1,14 @@
 import dedent from 'dedent';
 import invariant from 'tiny-invariant';
-import PromptfooHarmfulCompletionProvider from '../../providers/promptfoo';
-import type { ApiProvider, Assertion, TestCase } from '../../types';
+import PromptfooHarmfulCompletionProvider from '../../../providers/promptfoo';
+import type { ApiProvider, Assertion, TestCase } from '../../../types';
 import {
   HARM_PLUGINS,
   LLAMA_GUARD_REPLICATE_PROVIDER,
   REDTEAM_PROVIDER_HARM_PLUGINS,
   UNALIGNED_PROVIDER_HARM_PLUGINS,
-} from '../constants';
-import PluginBase from './base';
+} from '../../constants';
+import PluginBase from '../base';
 
 interface HarmfulCategory {
   key: string;
