@@ -6,6 +6,7 @@ import { loadApiProvider } from '../providers';
 import type { ApiProvider, TestCase } from '../types';
 import { extractVariablesFromTemplates } from '../util/templates';
 import { REDTEAM_MODEL, HARM_PLUGINS, PII_PLUGINS } from './constants';
+import BrandPluginCollection from './plugins/collections/brand';
 import { getHarmfulTests } from './plugins/collections/harmful';
 import { getPiiLeakTestsForCategory } from './plugins/collections/pii';
 import CompetitorPlugin from './plugins/competitors';
@@ -118,6 +119,11 @@ const Plugins: Plugin[] = [
     action: (provider, purpose, injectVar, n) =>
       getPiiLeakTestsForCategory(provider, purpose, injectVar, category, n),
   })) as Plugin[]),
+  ...Object.entries(BrandPluginCollection).map(([key, action]) => ({
+    key,
+    action: (provider: ApiProvider, purpose: string, injectVar: string, n: number) =>
+      action(provider, purpose, injectVar).generateTests(n),
+  })),
 ];
 
 // These plugins refer to a collection of tests.

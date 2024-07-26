@@ -205,6 +205,15 @@ function createBrandPlugin(
   };
 }
 
-const BrandPluginCollection = BRAND_PLUGINS.map(createBrandPlugin);
+const BrandPluginCollection = BRAND_PLUGINS.reduce(
+  (acc, plugin) => {
+    acc[plugin] = createBrandPlugin(plugin);
+    return acc;
+  },
+  {} as Record<
+    (typeof BRAND_PLUGINS)[number],
+    (provider: ApiProvider, purpose: string, injectVar: string) => PluginBase
+  >,
+);
 
 export default BrandPluginCollection;
