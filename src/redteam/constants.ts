@@ -88,6 +88,7 @@ export const ADDITIONAL_PLUGINS = [
   'shell-injection',
   'debug-access',
   'rbac',
+  ...BRAND_PLUGINS,
 ] as const;
 export type AdditionalPlugin = (typeof ADDITIONAL_PLUGINS)[number];
 
@@ -104,7 +105,6 @@ export const DEFAULT_PLUGINS: ReadonlySet<Plugin> = new Set([
   ...BASE_PLUGINS,
   ...(Object.keys(HARM_PLUGINS) as HarmPlugin[]),
   ...PII_PLUGINS,
-  ...BRAND_PLUGINS,
 ] as const satisfies readonly Plugin[]);
 
 export const ALL_PLUGINS: readonly Plugin[] = [
