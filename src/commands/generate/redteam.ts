@@ -104,6 +104,7 @@ export async function doGenerateRedteam(options: RedteamGenerateOptions) {
       ]),
     ];
   }
+  
   invariant(plugins && Array.isArray(plugins) && plugins.length > 0, 'No plugins found');
 
   let strategies: (string | { id: string })[] =

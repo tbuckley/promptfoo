@@ -164,7 +164,10 @@ const Strategies: Strategy[] = [
 ];
 
 function validatePlugins(plugins: { id: string; numTests: number }[]): void {
-  const invalidPlugins = plugins.filter((plugin) => !Plugins.map((p) => p.key).includes(plugin.id));
+  if (!plugins || plugins.length === 0) {
+    throw new Error('At least one plugin must be specified.');
+  }
+  const invalidPlugins = plugins?.filter((plugin) => !Plugins.map((p) => p.key).includes(plugin?.id)) || [];
   if (invalidPlugins.length > 0) {
     const validPluginsString = Plugins.map((p) => p.key).join(', ');
     const invalidPluginsString = invalidPlugins.map((p) => p.id).join(', ');
