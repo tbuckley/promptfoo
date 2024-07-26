@@ -3,7 +3,7 @@ export const REDTEAM_MODEL = 'openai:chat:gpt-4o';
 export const LLAMA_GUARD_REPLICATE_PROVIDER =
   'replicate:moderation:meta/meta-llama-guard-2-8b:b063023ee937f28e922982abdbf97b041ffe34ad3b35a53d33e1d74bb19b36c4';
 
-export const COLLECTIONS = ['harmful', 'pii'] as const;
+export const COLLECTIONS = ['brand', 'harmful', 'pii'] as const;
 export type Collection = (typeof COLLECTIONS)[number];
 
 export const UNALIGNED_PROVIDER_HARM_PLUGINS = {
@@ -55,6 +55,21 @@ export const HARM_PLUGINS = {
 export type HarmPlugin = keyof typeof HARM_PLUGINS;
 
 export const PII_PLUGINS = ['pii:api-db', 'pii:direct', 'pii:session', 'pii:social'] as const;
+
+export const BRAND_PLUGINS = [
+  'brand:self-endorsement',
+  'brand:self-mentions',
+  'brand:self-criticism',
+  'brand:competitor-endorsement',
+  'brand:competitor-mentions',
+  'brand:competitor-criticism',
+  'brand:neutral-endorsement',
+  'brand:neutral-mentions',
+  'brand:neutral-criticism',
+] as const;
+
+export type BrandPlugin = (typeof BRAND_PLUGINS)[number];
+
 export type PIIPlugin = (typeof PII_PLUGINS)[number];
 
 export const BASE_PLUGINS = [
@@ -76,13 +91,20 @@ export const ADDITIONAL_PLUGINS = [
 ] as const;
 export type AdditionalPlugin = (typeof ADDITIONAL_PLUGINS)[number];
 
-export type Plugin = Collection | HarmPlugin | PIIPlugin | BasePlugin | AdditionalPlugin;
+export type Plugin =
+  | Collection
+  | BrandPlugin
+  | HarmPlugin
+  | PIIPlugin
+  | BasePlugin
+  | AdditionalPlugin;
 
 export const DEFAULT_PLUGINS: ReadonlySet<Plugin> = new Set([
   ...COLLECTIONS,
   ...BASE_PLUGINS,
   ...(Object.keys(HARM_PLUGINS) as HarmPlugin[]),
   ...PII_PLUGINS,
+  ...BRAND_PLUGINS,
 ] as const satisfies readonly Plugin[]);
 
 export const ALL_PLUGINS: readonly Plugin[] = [
@@ -100,12 +122,25 @@ export type Strategy = (typeof ALL_STRATEGIES)[number];
 
 // Duplicated in src/web/nextui/src/app/report/constants.ts for frontend
 export const subCategoryDescriptions: Record<Plugin | Strategy, string> = {
+  brand: 'All brand plugins',
+  'brand:self-endorsement': 'Model endorses itself or its capabilities inappropriately.',
+  'brand:self-mentions': 'Model mentions itself or its capabilities in a neutral manner.',
+  'brand:self-criticism': 'Model criticizes itself or acknowledges its limitations appropriately.',
+  'brand:competitor-endorsement': 'Model inappropriately endorses competitor products or services.',
+  'brand:competitor-mentions': 'Model mentions competitors in a neutral manner.',
+  'brand:competitor-criticism': 'Model criticizes competitors inappropriately.',
+  'brand:neutral-endorsement':
+    'Model endorses neutral third-party products or services inappropriately.',
+  'brand:neutral-mentions':
+    'Model mentions neutral third-party products or services appropriately.',
+  'brand:neutral-criticism':
+    'Model criticizes neutral third-party products or services inappropriately.',
   competitors: 'Competitor mentions and endorsements',
   contracts: 'Enters business or legal commitments without supervision.',
   'debug-access': 'Attempts to access or use debugging commands.',
   'excessive-agency': 'Model taking excessive initiative or misunderstanding its capabilities.',
   hallucination: 'Model generating false or misleading information.',
-  harmful: 'All harmful categories',
+  harmful: 'All harmful plugins',
   'harmful:chemical-biological-weapons': 'Content related to chemical or biological weapons',
   'harmful:child-exploitation': 'Content exploiting or harming children.',
   'harmful:copyright-violations': 'Content violating copyright laws.',
@@ -134,7 +169,7 @@ export const subCategoryDescriptions: Record<Plugin | Strategy, string> = {
   'jailbreak:tree':
     'Experimental: More expensive and time-consuming jailbreak technique for improved results.',
   overreliance: 'Model susceptible to relying on an incorrect user assumption or input.',
-  pii: 'All PII categories',
+  pii: 'All PII plugins',
   'pii:api-db': 'PII exposed through API or database',
   'pii:direct': 'Direct exposure of PII',
   'pii:session': 'PII exposed in session data',

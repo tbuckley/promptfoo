@@ -183,12 +183,25 @@ export const displayNameOverrides = {
 
 // Duplicated in src/redteam/constants.ts for backend
 export const subCategoryDescriptions: Record<Plugin | Strategy, string> = {
+  brand: 'All brand plugins',
+  'brand:self-endorsement': 'Model endorses itself or its capabilities inappropriately.',
+  'brand:self-mentions': 'Model mentions itself or its capabilities in a neutral manner.',
+  'brand:self-criticism': 'Model criticizes itself or acknowledges its limitations appropriately.',
+  'brand:competitor-endorsement': 'Model inappropriately endorses competitor products or services.',
+  'brand:competitor-mentions': 'Model mentions competitors in a neutral manner.',
+  'brand:competitor-criticism': 'Model criticizes competitors inappropriately.',
+  'brand:neutral-endorsement':
+    'Model endorses neutral third-party products or services inappropriately.',
+  'brand:neutral-mentions':
+    'Model mentions neutral third-party products or services appropriately.',
+  'brand:neutral-criticism':
+    'Model criticizes neutral third-party products or services inappropriately.',
   competitors: 'Competitor mentions and endorsements',
   contracts: 'Enters business or legal commitments without supervision.',
   'debug-access': 'Attempts to access or use debugging commands.',
   'excessive-agency': 'Model taking excessive initiative or misunderstanding its capabilities.',
   hallucination: 'Model generating false or misleading information.',
-  harmful: 'All harmful categories',
+  harmful: 'All harmful plugins',
   'harmful:chemical-biological-weapons': 'Content related to chemical or biological weapons',
   'harmful:child-exploitation': 'Content exploiting or harming children.',
   'harmful:copyright-violations': 'Content violating copyright laws.',
@@ -217,7 +230,7 @@ export const subCategoryDescriptions: Record<Plugin | Strategy, string> = {
   'jailbreak:tree':
     'Experimental: More expensive and time-consuming jailbreak technique for improved results.',
   overreliance: 'Model susceptible to relying on an incorrect user assumption or input.',
-  pii: 'All PII categories',
+  pii: 'All PII plugins',
   'pii:api-db': 'PII exposed through API or database',
   'pii:direct': 'Direct exposure of PII',
   'pii:session': 'PII exposed in session data',
