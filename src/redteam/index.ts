@@ -33,7 +33,9 @@ export interface SynthesizeOptions {
   strategies: { id: string }[];
 }
 
-type TestCaseWithPlugin = TestCase & { metadata: { pluginId: string } };
+type TestCaseWithPlugin = TestCase & {
+  metadata: { pluginId: string; strategyId?: string };
+};
 
 interface Plugin {
   key: string;
@@ -299,8 +301,8 @@ export async function synthesize({
         ...strategyTestCases.map((t) => ({
           ...t,
           metadata: {
-            ...(t.metadata || {}),
-            pluginId: key,
+            ...(t.metadata as { pluginId: string }),
+            strategyId: key,
           },
         })),
       );
