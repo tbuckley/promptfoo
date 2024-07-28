@@ -1,6 +1,21 @@
 {
-  "extends": "next/core-web-vitals",
+  "extends": [
+    "next/core-web-vitals",
+    "eslint:recommended",
+    "plugin:react/recommended"
+  ],
+  "plugins": [
+    "react",
+    "vitest"
+  ],
   "rules": {
-    "@next/next/no-img-element": 0
+    "@next/next/no-img-element": 0,
+    "react/react-in-jsx-scope": 0,
+    "react/prop-types": 0
+  },
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
   }
 }
