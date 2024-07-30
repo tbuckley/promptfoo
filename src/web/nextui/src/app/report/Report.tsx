@@ -2,10 +2,15 @@
 
 import React from 'react';
 import { getApiBaseUrl } from '@/api';
+import { Tooltip } from '@mui/material';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import MenuItem from '@mui/material/MenuItem';
+import Select from '@mui/material/Select';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import type { ResultsFile, SharedResults } from '../eval/types';
@@ -19,6 +24,7 @@ import './Report.css';
 const App: React.FC = () => {
   const [evalId, setEvalId] = React.useState<string | null>(null);
   const [evalData, setEvalData] = React.useState<ResultsFile | null>(null);
+  const [selectedPromptIndex, setSelectedPromptIndex] = React.useState<number>(0);
 
   React.useEffect(() => {
     const fetchEvalById = async (id: string) => {
@@ -48,7 +54,8 @@ const App: React.FC = () => {
     return <Box sx={{ width: '100%', textAlign: 'center' }}>Loading...</Box>;
   }
 
-  const prompt = evalData.results.table.head.prompts[0];
+  const prompts = evalData.results.table.head.prompts;
+  const selectedPrompt = prompts[selectedPromptIndex];
   const tableData = evalData.results.table.body;
 
   const categoryStats = evalData.results.results.reduce(
@@ -68,8 +75,6 @@ const App: React.FC = () => {
           console.log('Unknown harm category:', category);
           return acc;
         }
-
-        const pass = row.success;
         const rowPassedModeration = row.gradingResult?.componentResults?.some((result) => {
           const isModeration = result.assertion?.type === 'moderation';
           const isPass = result.pass;
@@ -124,7 +129,7 @@ const App: React.FC = () => {
               size="small"
               label={
                 <>
-                  <strong>Model:</strong> {prompt.provider}
+                  <strong>Model:</strong> {selectedPrompt.provider}
                 </>
               }
             />
@@ -136,26 +141,41 @@ const App: React.FC = () => {
                 </>
               }
             />
-            <Chip
-              size="small"
-              label={
-                <>
-                  <strong>Prompt:</strong> &quot;
-                  {prompt.raw.length > 40 ? `${prompt.raw.substring(0, 40)}...` : prompt.raw}
-                  &quot;
-                </>
-              }
-            />
+            <Tooltip title={selectedPrompt.raw} arrow>
+              <Chip
+                size="small"
+                label={
+                  <>
+                    <strong>Prompt:</strong> &quot;
+                    {selectedPrompt.raw.length > 40
+                      ? `${selectedPrompt.raw.substring(0, 40)}...`
+                      : selectedPrompt.raw}
+                    &quot;
+                  </>
+                }
+              />
+            </Tooltip>
+            <FormControl sx={{ minWidth: 200 }}>
+              <InputLabel id="prompt-select-label">Select Prompt</InputLabel>
+              <Select
+                labelId="prompt-select-label"
+                value={selectedPromptIndex}
+                label="Select Prompt"
+                onChange={(e) => setSelectedPromptIndex(Number(e.target.value))}
+              >
+                {prompts.map((prompt, index) => (
+                  <MenuItem key={index} value={index}>
+                    Prompt {index + 1}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           </Box>
         </Card>
         <Overview categoryStats={categoryStats} />
         <RiskCategories categoryStats={categoryStats} />
         <TestSuites evalId={evalId} categoryStats={categoryStats} />
-        {/*
-        <div>
-          <Vulnerabilities />
-        </div>
-            */}
+        {/* ... existing commented out section ... */}
       </Stack>
     </Container>
   );
