@@ -70,16 +70,35 @@ const App: React.FC = () => {
 
   React.useEffect(() => {
     if (evalData) {
-      // Process evalData to create providerPromptData
-      // This is a placeholder implementation - you'll need to adjust based on your actual data structure
-      const newData: ProviderPromptData[] = evalData.results.table.head.prompts.map((prompt) => ({
-        provider: prompt.provider,
-        prompt: prompt.raw,
-        critical: Math.floor(Math.random() * 10), // Replace with actual data
-        high: Math.floor(Math.random() * 20),
-        medium: Math.floor(Math.random() * 30),
-        low: Math.floor(Math.random() * 40),
-      }));
+      const newData: ProviderPromptData[] = evalData.results.table.head.prompts.map((prompt, promptIndex) => {
+        const promptResults = evalData.results.results.filter(
+          (result, index) => index === promptIndex
+        );
+
+        const riskCounts = promptResults.reduce(
+          (acc, result) => {
+            const harm = result.vars['harmCategory'];
+            if (harm && typeof harm === 'string') {
+              const category = harm.split('/')[0].toLowerCase();
+              if (category === 'critical' || category === 'high' || category === 'medium' || category === 'low') {
+                acc[category]++;
+              }
+            }
+            return acc;
+          },
+          { critical: 0, high: 0, medium: 0, low: 0 }
+        );
+
+        return {
+          provider: prompt.provider,
+          prompt: prompt.raw,
+          critical: riskCounts.critical,
+          high: riskCounts.high,
+          medium: riskCounts.medium,
+          low: riskCounts.low,
+        };
+      });
+
       setProviderPromptData(newData);
       if (newData.length > 0) {
         setSelectedProvider(newData[0].provider);
