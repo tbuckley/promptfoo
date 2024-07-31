@@ -5,7 +5,10 @@ import { TopLevelCategory, categoryDescriptions, riskCategories } from './consta
 import './RiskCategories.css';
 
 const RiskCategories: React.FC<{
-  categoryStats: Record<string, { pass: number; total: number }>;
+  categoryStats: Record<
+    string,
+    { pass: number; total: number; passWithFilter: number; unused: number }
+  >;
 }> = ({ categoryStats }) => {
   const categories = Object.keys(riskCategories).map((category) => ({
     name: category,
@@ -28,6 +31,10 @@ const RiskCategories: React.FC<{
           (acc, subCategory) => acc + (categoryStats[subCategory]?.total || 0),
           0,
         );
+        const totalUnused = subCategories.reduce(
+          (acc, subCategory) => acc + (categoryStats[subCategory]?.unused || 0),
+          0,
+        );
 
         return (
           <RiskCard
@@ -37,9 +44,11 @@ const RiskCategories: React.FC<{
             progressValue={(totalPasses / totalTests) * 100}
             numTestsPassed={totalPasses}
             numTestsFailed={totalTests - totalPasses}
+            numTestsUnused={totalUnused}
             testTypes={subCategories.map((subCategory) => ({
               name: subCategory,
               passed: categoryStats[subCategory]?.pass === categoryStats[subCategory]?.total,
+              unused: categoryStats[subCategory]?.unused || 0,
               // If there are no tests, default to 100% pass rate
               percentage:
                 (categoryStats[subCategory]?.pass || 1) / (categoryStats[subCategory]?.total || 1),

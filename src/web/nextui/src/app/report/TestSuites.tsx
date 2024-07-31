@@ -1,4 +1,6 @@
 import React from 'react';
+import CancelIcon from '@mui/icons-material/Cancel';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Table from '@mui/material/Table';
@@ -21,56 +23,68 @@ import {
 } from './constants';
 import './TestSuites.css';
 
+// Add this new component for the gray dash in a circle
+const GrayDashCircle: React.FC = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10" fill="none" stroke="#9e9e9e" strokeWidth="2" />
+    <line x1="8" y1="12" x2="16" y2="12" stroke="#9e9e9e" strokeWidth="2" />
+  </svg>
+);
+
 const getSubCategoryStats = (
-  categoryStats: Record<string, { pass: number; total: number; passWithFilter: number }>,
+  categoryStats: Record<
+    string,
+    { pass: number; total: number; passWithFilter: number; unused: number }
+  >,
 ) => {
   const subCategoryStats = [];
   for (const [category, subCategories] of Object.entries(riskCategories)) {
     for (const subCategory of subCategories) {
+      const stats = categoryStats[subCategory] || {
+        pass: 0,
+        total: 0,
+        passWithFilter: 0,
+        unused: 0,
+      };
+      const runTests = stats.total - stats.unused;
       subCategoryStats.push({
         pluginName: subCategory,
         type: categoryAliases[subCategory as keyof typeof categoryAliases] || subCategory,
         description:
           subCategoryDescriptions[subCategory as keyof typeof subCategoryDescriptions] || '',
-        passRate: categoryStats[subCategory]
-          ? ((categoryStats[subCategory].pass / categoryStats[subCategory].total) * 100).toFixed(
-              1,
-            ) + '%'
-          : 'N/A',
-        passRateWithFilter: categoryStats[subCategory]
-          ? (
-              (categoryStats[subCategory].passWithFilter / categoryStats[subCategory].total) *
-              100
-            ).toFixed(1) + '%'
-          : 'N/A',
+        passRate: runTests > 0 ? ((stats.pass / runTests) * 100).toFixed(1) + '%' : 'N/A',
+        passRateWithFilter:
+          runTests > 0 ? ((stats.passWithFilter / runTests) * 100).toFixed(1) + '%' : 'N/A',
         severity:
           riskCategorySeverityMap[subCategory as keyof typeof riskCategorySeverityMap] || 'Unknown',
+        unused: stats.unused,
+        total: stats.total,
       });
     }
   }
-  return (
-    subCategoryStats
-      //.filter((subCategory) => subCategory.passRate !== 'N/A')
-      .sort((a, b) => {
-        if (a.passRate === 'N/A') {
-          return 1;
-        }
-        if (b.passRate === 'N/A') {
-          return -1;
-        }
-        return parseFloat(a.passRate) - parseFloat(b.passRate);
-      })
-  );
+  return subCategoryStats.sort((a, b) => {
+    if (a.passRate === 'N/A' && b.passRate === 'N/A') {
+      return 0;
+    }
+    if (a.passRate === 'N/A') {
+      return 1;
+    }
+    if (b.passRate === 'N/A') {
+      return -1;
+    }
+    return parseFloat(a.passRate) - parseFloat(b.passRate);
+  });
 };
 
 const TestSuites: React.FC<{
   evalId: string;
-  categoryStats: Record<string, { pass: number; total: number; passWithFilter: number }>;
+  categoryStats: Record<
+    string,
+    { pass: number; total: number; passWithFilter: number; unused: number }
+  >;
 }> = ({ evalId, categoryStats }) => {
   const router = useRouter();
-  const subCategoryStats = getSubCategoryStats(categoryStats).filter(
-    (subCategory) => subCategory.passRate !== 'N/A',
-  );
+  const subCategoryStats = getSubCategoryStats(categoryStats);
   const [page, setPage] = React.useState(0);
   const [rowsPerPage, setRowsPerPage] = React.useState(10);
 
@@ -181,7 +195,18 @@ const TestSuites: React.FC<{
                   }
                 }
                 return (
-                  <TableRow key={index}>
+                  <TableRow
+                    key={index}
+                    sx={
+                      subCategory.unused === subCategory.total
+                        ? {
+                            opacity: 0.5,
+                            color: 'text.secondary',
+                            '& .MuiTableCell-root': { color: 'inherit' },
+                          }
+                        : {}
+                    }
+                  >
                     <TableCell>
                       <span style={{ fontWeight: 500 }}>
                         {displayNameOverrides[
@@ -191,8 +216,20 @@ const TestSuites: React.FC<{
                     </TableCell>
                     <TableCell>{subCategory.description}</TableCell>
                     <TableCell className={passRateClass}>
-                      <strong>{subCategory.passRate}</strong>
-                      {subCategory.passRateWithFilter !== subCategory.passRate ? (
+                      {subCategory.unused === subCategory.total ? (
+                        <GrayDashCircle />
+                      ) : subCategory.passRate === '100.0%' ? (
+                        <CheckCircleIcon color="success" />
+                      ) : (
+                        <CancelIcon color="error" />
+                      )}
+                      <strong>
+                        {subCategory.unused === subCategory.total
+                          ? 'Not run'
+                          : subCategory.passRate}
+                      </strong>
+                      {subCategory.passRateWithFilter !== subCategory.passRate &&
+                      subCategory.unused !== subCategory.total ? (
                         <>
                           <br />({subCategory.passRateWithFilter} with mitigation)
                         </>

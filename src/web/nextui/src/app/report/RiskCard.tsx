@@ -1,139 +1,119 @@
 import React from 'react';
-import CancelIcon from '@mui/icons-material/Cancel';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardContent from '@mui/material/CardContent';
+import CircularProgress from '@mui/material/CircularProgress';
 import Grid from '@mui/material/Grid';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
 import ListItemText from '@mui/material/ListItemText';
-import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
-import { Gauge } from '@mui/x-charts/Gauge';
-import { categoryAliases, displayNameOverrides, subCategoryDescriptions } from './constants';
+import { categoryAliases } from './constants';
 import { useReportStore } from './store';
 import './RiskCard.css';
 
 const RiskCard: React.FC<{
   title: string;
   subtitle: string;
-  progressValue: number;
+  totalProbes: number;
   numTestsPassed: number;
   numTestsFailed: number;
-  testTypes: { name: string; passed: boolean; percentage: number }[];
-}> = ({ title, subtitle, progressValue, numTestsPassed, numTestsFailed, testTypes }) => {
+  numTestsUnused: number;
+  testTypes: { name: string; passed: boolean; percentage: number; unused: number }[];
+}> = ({
+  title,
+  subtitle,
+  totalProbes,
+  numTestsPassed,
+  numTestsFailed,
+  numTestsUnused,
+  testTypes,
+}) => {
   const { showPercentagesOnRiskCards, pluginPassRateThreshold } = useReportStore();
+  const runTests = numTestsPassed + numTestsFailed;
+
+  const getStatusColor = (passRate: number) => {
+    if (passRate >= 80) {
+      return '#34C759';
+    } // Apple's green
+    if (passRate >= 50) {
+      return '#FF9500';
+    } // Apple's orange
+    return '#FF3B30'; // Apple's red
+  };
+
   return (
     <Card>
       <CardContent className="risk-card-container">
         <Grid container spacing={3}>
-          <Grid
-            item
-            xs={12}
-            md={6}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              textAlign: 'center',
-            }}
-          >
+          <Grid item xs={12} md={6} style={{ textAlign: 'center' }}>
             <Typography variant="h5" className="risk-card-title">
               {title}
             </Typography>
             <Typography variant="subtitle1" color="textSecondary" mb={2}>
               {subtitle}
             </Typography>
-            <Box
-              sx={{
-                position: 'relative',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 100,
-                height: 100,
-              }}
-            >
-              <Gauge
-                value={progressValue}
-                max={100}
-                thickness={10}
-                arc={{
-                  startAngle: -90,
-                  endAngle: 90,
-                  color: 'primary.main',
-                }}
-                text={`${Math.round(progressValue)}%`}
-                sx={{
-                  width: '100%',
-                  height: '100%',
-                }}
-              />
-            </Box>
-            <Typography variant="h6" className="risk-card-issues">
-              {numTestsFailed} failed probes
-            </Typography>
-            <Typography
-              variant="subtitle1"
-              color="textSecondary"
-              className="risk-card-tests-passed"
-            >
-              {numTestsPassed}/{numTestsPassed + numTestsFailed} passed
+            {runTests > 0 ? (
+              <>
+                <Box sx={{ position: 'relative', display: 'inline-flex', m: 2 }}>
+                  <CircularProgress
+                    variant="determinate"
+                    value={(numTestsPassed / runTests) * 100}
+                    size={80}
+                    thickness={4}
+                    sx={{ color: getStatusColor((numTestsPassed / runTests) * 100) }}
+                  />
+                  <Box
+                    sx={{
+                      top: 0,
+                      left: 0,
+                      bottom: 0,
+                      right: 0,
+                      position: 'absolute',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Typography variant="caption" component="div" color="text.secondary">
+                      {`${Math.round((numTestsPassed / runTests) * 100)}%`}
+                    </Typography>
+                  </Box>
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  {numTestsPassed} passed, {numTestsFailed} failed
+                </Typography>
+              </>
+            ) : (
+              <Typography variant="body1" color="text.secondary" sx={{ m: 2 }}>
+                No probes run
+              </Typography>
+            )}
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              {runTests} of {totalProbes} probes tested
+              {numTestsUnused > 0 && ` (${numTestsUnused} unused)`}
             </Typography>
           </Grid>
-          <Grid item xs={6} md={4}>
+          <Grid item xs={12} md={6}>
             <List dense>
               {testTypes.map((test, index) => (
-                <Tooltip
-                  key={index}
-                  title={subCategoryDescriptions[test.name as keyof typeof subCategoryDescriptions]}
-                  placement="left"
-                  arrow
-                >
-                  <ListItem
-                    className="risk-card-list-item"
-                    onClick={(event) => {
-                      const searchParams = new URLSearchParams(window.location.search);
-                      const evalId = searchParams.get('evalId');
-                      const descriptiveName =
-                        categoryAliases[test.name as keyof typeof categoryAliases];
-                      const url = `/eval/?evalId=${evalId}&search=${encodeURIComponent(`(var=${descriptiveName}|metric=${descriptiveName})`)}`;
-                      if (event.ctrlKey || event.metaKey) {
-                        window.open(url, '_blank');
-                      } else {
-                        window.location.href = url;
-                      }
+                <ListItem key={index} disablePadding>
+                  <ListItemText
+                    primary={categoryAliases[test.name as keyof typeof categoryAliases]}
+                    secondary={
+                      test.unused ? 'Not tested' : `${Math.round(test.percentage * 100)}% passed`
+                    }
+                    primaryTypographyProps={{ variant: 'body2' }}
+                    secondaryTypographyProps={{
+                      variant: 'caption',
+                      style: {
+                        color: test.unused
+                          ? 'text.secondary'
+                          : getStatusColor(test.percentage * 100),
+                      },
                     }}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <ListItemText
-                      primary={
-                        displayNameOverrides[test.name as keyof typeof displayNameOverrides] ||
-                        categoryAliases[test.name as keyof typeof categoryAliases]
-                      }
-                      primaryTypographyProps={{ variant: 'body2' }}
-                    />
-                    {showPercentagesOnRiskCards ? (
-                      <Typography
-                        variant="body2"
-                        className={`risk-card-percentage ${
-                          test.percentage >= 0.8
-                            ? 'risk-card-percentage-high'
-                            : test.percentage >= 0.5
-                              ? 'risk-card-percentage-medium'
-                              : 'risk-card-percentage-low'
-                        }`}
-                      >
-                        {`${Math.round(test.percentage * 100)}%`}
-                      </Typography>
-                    ) : test.percentage >= pluginPassRateThreshold ? (
-                      <CheckCircleIcon className="risk-card-icon-passed" />
-                    ) : (
-                      <CancelIcon className="risk-card-icon-failed" />
-                    )}
-                  </ListItem>
-                </Tooltip>
+                  />
+                </ListItem>
               ))}
             </List>
           </Grid>

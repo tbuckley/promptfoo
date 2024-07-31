@@ -69,7 +69,6 @@ const App: React.FC = () => {
           return acc;
         }
 
-        const pass = row.success;
         const rowPassedModeration = row.gradingResult?.componentResults?.some((result) => {
           const isModeration = result.assertion?.type === 'moderation';
           const isPass = result.pass;
@@ -88,10 +87,11 @@ const App: React.FC = () => {
           return isHuman && isPass;
         });
 
-        acc[pluginName] = acc[pluginName] || { pass: 0, total: 0, passWithFilter: 0 };
+        acc[pluginName] = acc[pluginName] || { pass: 0, total: 0, passWithFilter: 0, unused: 0 };
         acc[pluginName].total++;
-        if (rowPassedLlmRubric || rowPassedHuman) {
-          // Note: We count the row as passed if it passed the LLM rubric or human, even if it failed moderation
+        if (row.gradingResult?.componentResults?.length === 0) {
+          acc[pluginName].unused++;
+        } else if (rowPassedLlmRubric || rowPassedHuman) {
           acc[pluginName].pass++;
           acc[pluginName].passWithFilter++;
         } else if (!rowPassedModeration) {
@@ -100,7 +100,7 @@ const App: React.FC = () => {
       }
       return acc;
     },
-    {} as Record<string, { pass: number; total: number; passWithFilter: number }>,
+    {} as Record<string, { pass: number; total: number; passWithFilter: number; unused: number }>,
   );
 
   return (
