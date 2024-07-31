@@ -53,7 +53,13 @@
     "db:generate": "npx drizzle-kit generate:sqlite",
     "jsonSchema:generate": "npx -y tsx scripts/generateJsonSchema.ts > site/static/config-schema.json",
     "audit:fix": "npm audit fix && npm audit fix --prefix src/web/nextui && npm audit fix --prefix site",
-    "prepublishOnly": "npm run build:clean && npm run build"
+    "prepublishOnly": "npm run build:clean && npm run build",
+    "build:exe": "npm run build && ts-node scripts/build-sea.ts",
+    "package:exe": "ts-node scripts/package-exe.ts",
+    "package:exe:all": "npm run package:exe:win && npm run package:exe:mac && npm run package:exe:linux",
+    "package:exe:win": "cross-env PLATFORM=win32 npm run package:exe",
+    "package:exe:mac": "cross-env PLATFORM=darwin npm run package:exe",
+    "package:exe:linux": "cross-env PLATFORM=linux npm run package:exe"
   },
   "overrides": {
     "uri-js": "npm:uri-js-replace",
@@ -99,8 +105,10 @@
     "@types/opener": "^1.4.3",
     "@types/semver": "^7.5.8",
     "@types/uuid": "^10.0.0",
+    "@vercel/ncc": "^0.36.1",
     "check-dependency-version-consistency": "^4.1.0",
     "cloudflare": "3.4.0",
+    "cross-env": "^7.0.3",
     "drizzle-kit": "^0.23.1",
     "esbuild": "^0.23.0",
     "eslint": "^8.57.0",
