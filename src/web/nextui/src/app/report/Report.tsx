@@ -7,6 +7,11 @@ import {
   Button,
   Modal,
   Box,
+  Typography,
+  Tooltip,
+  Chip,
+  Stack,
+  TextField,
   Table,
   TableBody,
   TableCell,
@@ -14,13 +19,9 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Typography,
-  Tooltip,
 } from '@mui/material';
 import Card from '@mui/material/Card';
-import Chip from '@mui/material/Chip';
 import Container from '@mui/material/Container';
-import Stack from '@mui/material/Stack';
 import type { ResultsFile, SharedResults } from '../eval/types';
 import Overview from './Overview';
 import ReportSettingsDialogButton from './ReportSettingsDialogButton';
@@ -41,10 +42,11 @@ interface ProviderPromptData {
 const ProviderPromptSelector: React.FC<{
   data: ProviderPromptData[];
   selectedProvider: string;
-  selectedPrompt: string;
+  selectedPromptIndex: number;
   onSelect: (provider: string, prompt: string) => void;
-}> = ({ data, selectedProvider, selectedPrompt, onSelect }) => {
+}> = ({ data, selectedProvider, selectedPromptIndex, onSelect }) => {
   const [open, setOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const handleOpen = () => setOpen(true);
   const handleClose = () => setOpen(false);
@@ -54,66 +56,76 @@ const ProviderPromptSelector: React.FC<{
     handleClose();
   };
 
+  const filteredData = data.filter(
+    (item) =>
+      item.provider.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.prompt.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+
   return (
     <>
       <Button onClick={handleOpen} startIcon={<SettingsIcon />}>
         Select Provider & Prompt
       </Button>
-      <Modal open={open} onClose={handleClose} aria-labelledby="provider-prompt-selector">
+      <Modal open={open} onClose={handleClose}>
         <Box
           sx={{
             position: 'absolute',
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
-            width: '80%',
-            maxWidth: 800,
+            width: '90%',
+            maxWidth: 1000,
+            maxHeight: '90vh',
             bgcolor: 'background.paper',
             boxShadow: 24,
             p: 4,
-            maxHeight: '80vh',
+            borderRadius: 2,
             overflow: 'auto',
           }}
         >
-          <Typography id="provider-prompt-selector" variant="h6" component="h2" gutterBottom>
+          <Typography variant="h4" component="h2" gutterBottom>
             Select Provider & Prompt
           </Typography>
+          <TextField
+            fullWidth
+            variant="outlined"
+            placeholder="Search providers or prompts..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            sx={{ mb: 2 }}
+          />
           <TableContainer component={Paper}>
-            <Table size="small">
+            <Table>
               <TableHead>
                 <TableRow>
                   <TableCell>Provider</TableCell>
                   <TableCell>Prompt</TableCell>
-                  <TableCell align="right">Critical</TableCell>
-                  <TableCell align="right">High</TableCell>
-                  <TableCell align="right">Medium</TableCell>
-                  <TableCell align="right">Low</TableCell>
+                  <TableCell align="center">Critical</TableCell>
+                  <TableCell align="center">High</TableCell>
+                  <TableCell align="center">Medium</TableCell>
+                  <TableCell align="center">Low</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {data.map((row, index) => (
+                {filteredData.map((item, index) => (
                   <TableRow
                     key={index}
-                    sx={{
-                      cursor: 'pointer',
-                      '&:hover': { backgroundColor: 'action.hover' },
-                      backgroundColor:
-                        row.provider === selectedProvider && row.prompt === selectedPrompt
-                          ? 'action.selected'
-                          : 'inherit',
-                    }}
-                    onClick={() => handleSelect(row.provider, row.prompt)}
+                    onClick={() => handleSelect(item.provider, item.prompt)}
+                    selected={index === selectedPromptIndex && item.provider === selectedProvider}
+                    hover
+                    sx={{ cursor: 'pointer' }}
                   >
-                    <TableCell>{row.provider}</TableCell>
+                    <TableCell>{item.provider}</TableCell>
                     <TableCell>
-                      <Tooltip title={row.prompt} arrow>
-                        <span>{row.prompt.substring(0, 30)}...</span>
-                      </Tooltip>
+                      <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>
+                        {item.prompt}
+                      </pre>
                     </TableCell>
-                    <TableCell align="right">{row.critical}</TableCell>
-                    <TableCell align="right">{row.high}</TableCell>
-                    <TableCell align="right">{row.medium}</TableCell>
-                    <TableCell align="right">{row.low}</TableCell>
+                    <TableCell align="center">{item.critical}</TableCell>
+                    <TableCell align="center">{item.high}</TableCell>
+                    <TableCell align="center">{item.medium}</TableCell>
+                    <TableCell align="center">{item.low}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -129,7 +141,6 @@ const App: React.FC = () => {
   const [evalId, setEvalId] = React.useState<string | null>(null);
   const [evalData, setEvalData] = React.useState<ResultsFile | null>(null);
   const [selectedProvider, setSelectedProvider] = React.useState<string>('');
-  const [selectedPrompt, setSelectedPrompt] = React.useState<string>('');
   const [selectedPromptIndex, setSelectedPromptIndex] = React.useState<number>(0);
   const [providerPromptData, setProviderPromptData] = React.useState<ProviderPromptData[]>([]);
 
@@ -147,11 +158,34 @@ const App: React.FC = () => {
       return;
     }
     const evalId = searchParams.get('evalId');
+    const provider = searchParams.get('provider');
+    const promptIndex = searchParams.get('promptIndex');
+
     if (evalId) {
       setEvalId(evalId);
       fetchEvalById(evalId);
     }
+
+    if (provider) {
+      setSelectedProvider(provider);
+    }
+
+    if (promptIndex) {
+      const index = parseInt(promptIndex, 10);
+      if (!isNaN(index)) {
+        setSelectedPromptIndex(index);
+      }
+    }
   }, []);
+
+  React.useEffect(() => {
+    if (selectedProvider && selectedPromptIndex !== null) {
+      const searchParams = new URLSearchParams(window.location.search);
+      searchParams.set('provider', selectedProvider);
+      searchParams.set('promptIndex', selectedPromptIndex.toString());
+      window.history.replaceState(null, '', `?${searchParams.toString()}`);
+    }
+  }, [selectedProvider, selectedPromptIndex]);
 
   React.useEffect(() => {
     document.title = `Report: ${evalData?.config.description || evalId || 'Red Team'} | promptfoo`;
@@ -172,7 +206,6 @@ const App: React.FC = () => {
       setProviderPromptData(newData);
       if (newData.length > 0) {
         setSelectedProvider(newData[0].provider);
-        setSelectedPrompt(newData[0].prompt);
         setSelectedPromptIndex(0);
       }
     }
@@ -180,7 +213,6 @@ const App: React.FC = () => {
 
   const handleProviderPromptSelect = (provider: string, prompt: string) => {
     setSelectedProvider(provider);
-    setSelectedPrompt(prompt);
     const index = providerPromptData.findIndex(
       (item) => item.provider === provider && item.prompt === prompt,
     );
@@ -196,6 +228,9 @@ const App: React.FC = () => {
   const prompts = evalData.results.table.head.prompts;
   const currentPrompt = prompts[selectedPromptIndex];
   const tableData = evalData.results.table.body;
+
+  const truncateText = (text: string, maxLength: number) =>
+    text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
 
   const categoryStats = evalData.results.results.reduce(
     (acc, row) => {
@@ -267,17 +302,44 @@ const App: React.FC = () => {
             <ProviderPromptSelector
               data={providerPromptData}
               selectedProvider={selectedProvider}
-              selectedPrompt={selectedPrompt}
+              selectedPromptIndex={selectedPromptIndex}
               onSelect={handleProviderPromptSelect}
             />
-            <Chip
-              size="small"
-              label={
-                <>
-                  <strong>Dataset:</strong> {tableData.length} probes
-                </>
-              }
-            />
+            <Stack direction="row" spacing={1} mt={2} flexWrap="wrap">
+              <Chip
+                size="small"
+                label={
+                  <>
+                    <strong>Dataset:</strong> {tableData.length} probes
+                  </>
+                }
+              />
+              <Chip
+                size="small"
+                label={
+                  <>
+                    <strong>Model:</strong> {selectedProvider}
+                  </>
+                }
+              />
+              <Tooltip
+                title={currentPrompt.raw}
+                arrow
+                placement="bottom"
+                enterDelay={500}
+                leaveDelay={200}
+              >
+                <Chip
+                  size="small"
+                  label={
+                    <>
+                      <strong>Prompt:</strong> {truncateText(currentPrompt.raw, 30)}
+                    </>
+                  }
+                  sx={{ cursor: 'pointer' }}
+                />
+              </Tooltip>
+            </Stack>
           </Box>
         </Card>
         <Overview categoryStats={categoryStats} />
