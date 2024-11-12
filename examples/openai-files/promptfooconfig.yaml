@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+prompts:
+  - What do you see? {{ image }}
+
+providers:
+  - openai:chat:gpt-4o
+
+tests:
+  - vars:
+      image: file://turkeys.jpg
+    assert:
+      - type: contains
+        value: 'turkey'

@@ -9,7 +9,7 @@ import { runAssertions, runCompareAssertion } from './assertions';
 import { fetchWithCache, getCache } from './cache';
 import cliState from './cliState';
 import { getEnvBool, getEnvInt, isCI } from './envars';
-import { renderPrompt, runExtensionHook } from './evaluatorHelpers';
+import { type FileRenderers, renderPromptWithFiles, runExtensionHook } from './evaluatorHelpers';
 import logger from './logger';
 import type Eval from './models/eval';
 import { generateIdFromPrompt } from './models/prompt';
@@ -107,7 +107,10 @@ class Evaluator {
   stats: EvaluateStats;
   conversations: Record<
     string,
-    { prompt: string | object; input: string; output: string | object }[]
+    {
+      messages: { prompt: string | object; input: string; output: string | object }[];
+      renderers?: FileRenderers;
+    }
   >;
   registers: Record<string, string | object>;
   fileWriters: JsonlFileWriter[];
@@ -151,22 +154,31 @@ class Evaluator {
     const promptLabel = prompt.label;
 
     // Set up the special _conversation variable
-    const vars = test.vars || {};
+    const vars = test.vars ? { ...test.vars } : {}; // FIXME(tbuckley): This is a hack to avoid tests replacing file:// with markdown
     const conversationKey = `${provider.label || provider.id()}:${prompt.id}`;
     const usesConversation = prompt.raw.includes('_conversation');
+    let previousRenderers: FileRenderers | undefined;
+
     if (
       !getEnvBool('PROMPTFOO_DISABLE_CONVERSATION_VAR') &&
       !test.options?.disableConversationVar &&
       usesConversation
     ) {
-      vars._conversation = this.conversations[conversationKey] || [];
+      vars._conversation = this.conversations[conversationKey]?.messages || [];
+      previousRenderers = this.conversations[conversationKey]?.renderers;
     }
 
     // Overwrite vars with any saved register values
     Object.assign(vars, this.registers);
 
     // Render the prompt
-    const renderedPrompt = await renderPrompt(prompt, vars, filters, provider);
+    const [renderedPrompt, renderers] = await renderPromptWithFiles(
+      prompt,
+      vars,
+      filters,
+      provider,
+      previousRenderers,
+    );
 
     let renderedJson = undefined;
     try {
@@ -180,7 +192,7 @@ class Evaluator {
         config: provider.config,
       },
       prompt: {
-        raw: renderedPrompt,
+        raw: renderedPrompt, // FIXME(tbuckley): This is shown in the results table when viewing the details for a cell.
         label: promptLabel,
         config: prompt.config,
       },
@@ -207,6 +219,9 @@ class Evaluator {
             // Always included
             vars,
 
+            // Used for models with file support
+            renderFn: renderers?.renderMultiPart,
+
             // Part of these may be removed in python and script providers, but every Javascript provider gets them
             prompt,
             filters,
@@ -231,8 +246,11 @@ class Evaluator {
         // Use the `content` field if present (OpenAI chat format)
         conversationLastInput = lastElt?.content || lastElt;
       }
-      this.conversations[conversationKey] = this.conversations[conversationKey] || [];
-      this.conversations[conversationKey].push({
+      this.conversations[conversationKey] = this.conversations[conversationKey] || {
+        messages: [],
+        renderers,
+      };
+      this.conversations[conversationKey].messages.push({
         prompt: renderedJson || renderedPrompt,
         input: conversationLastInput || renderedJson || renderedPrompt,
         output: response.output || '',
@@ -288,7 +306,7 @@ class Evaluator {
 
         invariant(processedResponse.output != null, 'Response output should not be null');
         const checkResult = await runAssertions({
-          prompt: renderedPrompt,
+          prompt: renderedPrompt, // FIXME(tbuckley): Use the filenames or utf-8 reading?
           provider,
           providerResponse: processedResponse,
           test,

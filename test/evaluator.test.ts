@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import * as fs from 'fs';
 import glob from 'glob';
 import { evaluate, generateVarCombinations, isAllowedPrompt } from '../src/evaluator';
 import { runExtensionHook } from '../src/evaluatorHelpers';
@@ -11,6 +12,10 @@ jest.mock('proxy-agent', () => ({
 }));
 jest.mock('glob', () => ({
   globSync: jest.fn(),
+}));
+jest.mock('fs', () => ({
+  ...jest.requireActual('fs'),
+  readFileSync: jest.fn(),
 }));
 
 jest.mock('../src/esm');
@@ -967,6 +972,62 @@ describe('evaluator', () => {
     expect(summary.stats.failures).toBe(0);
     expect(summary.results[0].response?.output).toBe('First run ');
     expect(summary.results[1].response?.output).toBe('Second run First run ');
+  });
+
+  it('evaluate with _conversation variable and files', async () => {
+    const mockApiProvider: ApiProvider = {
+      id: jest.fn().mockReturnValue('test-provider'),
+      mimeTypes: ['image/png'],
+      callApi: jest.fn().mockImplementation((prompt, context) => {
+        return Promise.resolve({
+          output: context
+            .renderFn(prompt)
+            .map((part: { text: string } | { file: Buffer }) => {
+              return 'file' in part ? part.file.toString('utf8') : part.text;
+            })
+            .join(''),
+          tokenUsage: { total: 10, prompt: 5, completion: 5, cached: 0 },
+        });
+      }),
+    };
+
+    const testSuite: TestSuite = {
+      providers: [mockApiProvider],
+      prompts: [toPrompt('{{ var1 }} {{ _conversation[0].input }}')],
+      tests: [
+        {
+          vars: { var1: 'file:///path/to/fileA.png' },
+        },
+        {
+          vars: { var1: 'file:///path/to/fileB.png' },
+        },
+      ],
+    };
+
+    const bufferA = Buffer.from('imageA');
+    const bufferB = Buffer.from('imageB');
+    jest.spyOn(fs, 'readFileSync').mockImplementation((path) => {
+      if (path.toString().endsWith('fileA.png')) {
+        return bufferA;
+      }
+      return bufferB;
+    });
+    jest.spyOn(glob, 'globSync').mockImplementation((pattern) => {
+      if (pattern.toString().endsWith('fileA.png')) {
+        return ['/path/to/fileA.png'];
+      }
+      return ['/path/to/fileB.png'];
+    });
+
+    const evalRecord = await Eval.create({}, testSuite.prompts, { id: randomUUID() });
+    await evaluate(testSuite, evalRecord, {});
+    const summary = await evalRecord.toEvaluateSummary();
+
+    expect(mockApiProvider.callApi).toHaveBeenCalledTimes(2);
+    expect(summary.stats.successes).toBe(2);
+    expect(summary.stats.failures).toBe(0);
+    expect(summary.results[0].response?.output).toBe(`imageA `);
+    expect(summary.results[1].response?.output).toBe(`imageB imageA `);
   });
 
   it('evaluate with labeled and unlabeled providers and providerPromptMap', async () => {

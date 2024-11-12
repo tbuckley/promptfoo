@@ -2,7 +2,13 @@ import Anthropic, { APIError } from '@anthropic-ai/sdk';
 import { getCache, isCacheEnabled } from '../cache';
 import { getEnvString, getEnvFloat, getEnvInt } from '../envars';
 import logger from '../logger';
-import type { ApiProvider, EnvOverrides, ProviderResponse, TokenUsage } from '../types';
+import type {
+  ApiProvider,
+  CallApiContextParams,
+  EnvOverrides,
+  ProviderResponse,
+  TokenUsage,
+} from '../types';
 import { maybeLoadFromExternalFile } from '../util';
 import { calculateCost } from './shared';
 
@@ -64,6 +70,9 @@ const ANTHROPIC_MODELS = [
     },
   })),
 ];
+
+const PDF_MODELS = ['claude-3-5-sonnet-20241022', 'claude-3-5-sonnet-20240620'];
+const VISION_MODELS = ['claude-3'];
 
 interface AnthropicMessageOptions {
   apiKey?: string;
@@ -211,6 +220,17 @@ export class AnthropicMessagesProvider implements ApiProvider {
 
   static ANTHROPIC_MODELS_NAMES = ANTHROPIC_MODELS.map((model) => model.id);
 
+  get mimeTypes(): string[] {
+    const mimeTypes: string[] = [];
+    if (PDF_MODELS.includes(this.modelName)) {
+      mimeTypes.push('application/pdf');
+    }
+    if (VISION_MODELS.some((prefix) => this.modelName.startsWith(prefix))) {
+      mimeTypes.push('image/jpeg', 'image/png', 'image/gif', 'image/webp');
+    }
+    return mimeTypes;
+  }
+
   constructor(
     modelName: string,
     options: { id?: string; config?: AnthropicMessageOptions; env?: EnvOverrides } = {},
@@ -243,7 +263,7 @@ export class AnthropicMessagesProvider implements ApiProvider {
     return this.config.apiBaseUrl;
   }
 
-  async callApi(prompt: string): Promise<ProviderResponse> {
+  async callApi(prompt: string, context?: CallApiContextParams): Promise<ProviderResponse> {
     if (!this.apiKey) {
       throw new Error(
         'Anthropic API key is not set. Set the ANTHROPIC_API_KEY environment variable or add `apiKey` to the provider config.',
@@ -251,11 +271,55 @@ export class AnthropicMessagesProvider implements ApiProvider {
     }
 
     const { system, extractedMessages } = parseMessages(prompt);
+    const defaultHeaders: { headers?: Record<string, string> } = {};
+
+    let messages = extractedMessages;
+    const renderFn = context?.renderFn;
+    if (renderFn) {
+      messages = extractedMessages.map((message) => {
+        let singleString: string | null = null;
+        if (typeof message.content === 'string') {
+          singleString = message.content;
+        } else if (
+          Array.isArray(message.content) &&
+          message.content.length === 1 &&
+          message.content[0].type === 'text'
+        ) {
+          singleString = message.content[0].text;
+        }
+
+        // If it isn't a single string, return the message as is
+        if (singleString === null) {
+          return message;
+        }
+
+        return {
+          ...message,
+          content: renderFn(singleString).map((part) => {
+            if ('file' in part) {
+              if (part.mimeType === 'application/pdf') {
+                defaultHeaders.headers = { 'anthropic-beta': 'pdfs-2024-09-25' };
+              }
+              return {
+                type: (part.mimeType === 'application/pdf' ? 'document' : 'image') as any, // FIXME(tbuckley): Add support for PDF
+                source: {
+                  type: 'base64',
+                  media_type: part.mimeType as Anthropic.ImageBlockParam.Source['media_type'], // FIXME(tbuckley): Add support for PDF
+                  data: part.file.toString('base64'),
+                },
+              };
+            }
+            return { type: 'text', text: part.text };
+          }),
+        };
+      });
+    }
+
     const params: Anthropic.MessageCreateParams = {
       model: this.modelName,
       ...(system ? { system } : {}),
       max_tokens: this.config?.max_tokens || getEnvInt('ANTHROPIC_MAX_TOKENS', 1024),
-      messages: extractedMessages,
+      messages,
       stream: false,
       temperature: this.config.temperature || getEnvFloat('ANTHROPIC_TEMPERATURE', 0),
       ...(this.config.tools ? { tools: maybeLoadFromExternalFile(this.config.tools) } : {}),
@@ -290,7 +354,7 @@ export class AnthropicMessagesProvider implements ApiProvider {
 
     try {
       const response = await this.anthropic.messages.create(params, {
-        ...(this.config.headers ? { headers: this.config.headers } : {}),
+        ...(this.config.headers ? { headers: this.config.headers } : defaultHeaders),
       });
 
       logger.debug(`Anthropic Messages API response: ${JSON.stringify(response)}`);

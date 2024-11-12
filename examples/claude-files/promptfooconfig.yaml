@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+prompts:
+  - 'Write a tweet about {{ file }}'
+  - 'Write a very concise, funny tweet about {{ file}}'
+
+providers:
+  - anthropic:messages:claude-3-5-sonnet-20240620
+
+tests:
+  - vars:
+      file: file://./../google-aistudio-gemini-files/sample.pdf
+  - vars:
+      file: file://./../openai-files/turkeys.jpg

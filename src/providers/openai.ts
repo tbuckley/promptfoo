@@ -462,12 +462,27 @@ export class OpenAiCompletionProvider extends OpenAiGenericProvider {
   }
 }
 
-export class OpenAiChatCompletionProvider extends OpenAiGenericProvider {
+const OPENAI_VISION_MODEL_PREFIXES = [
+  'gpt-4o',
+  'gpt-4-2024-04-09',
+  'gpt-4-turbo',
+  'gpt-4-vision-preview',
+  'gpt-4-1106-vision-preview',
+];
+
+export class OpenAiChatCompletionProvider extends OpenAiGenericProvider implements ApiProvider {
   static OPENAI_CHAT_MODELS = OPENAI_CHAT_MODELS;
 
   static OPENAI_CHAT_MODEL_NAMES = OPENAI_CHAT_MODELS.map((model) => model.id);
 
   config: OpenAiCompletionOptions;
+
+  get mimeTypes(): string[] {
+    if (OPENAI_VISION_MODEL_PREFIXES.some((prefix) => this.modelName.startsWith(prefix))) {
+      return ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+    }
+    return [];
+  }
 
   constructor(
     modelName: string,
@@ -493,6 +508,29 @@ export class OpenAiChatCompletionProvider extends OpenAiGenericProvider {
 
     const messages = parseChatPrompt(prompt, [{ role: 'user', content: prompt }]);
 
+    // Convert messages to expected format
+    const populatedMessages = messages.map((message) => {
+      if (!context?.renderFn || typeof message.content !== 'string') {
+        return message;
+      }
+
+      // We have a render function and a string, so try converting to files
+      return {
+        role: message.role,
+        content: context.renderFn(message.content)?.map((value) => {
+          if ('file' in value) {
+            return {
+              type: 'image_url',
+              image_url: {
+                url: `data:${value.mimeType};base64,` + value.file.toString('base64'),
+              },
+            };
+          }
+          return { type: 'text', text: value.text };
+        }),
+      };
+    });
+
     // NOTE: Special handling for o1 models which do not support max_tokens and temperature
     const isO1Model = this.modelName.startsWith('o1-');
     const maxCompletionTokens = isO1Model
@@ -507,7 +545,7 @@ export class OpenAiChatCompletionProvider extends OpenAiGenericProvider {
 
     const body = {
       model: this.modelName,
-      messages,
+      messages: populatedMessages,
       seed: config.seed,
       ...(maxTokens ? { max_tokens: maxTokens } : {}),
       ...(maxCompletionTokens ? { max_completion_tokens: maxCompletionTokens } : {}),

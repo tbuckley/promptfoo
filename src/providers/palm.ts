@@ -85,6 +85,57 @@ export class PalmChatProvider extends PalmGenericProvider {
     super(modelName, options);
   }
 
+  get isGemini(): boolean {
+    return this.modelName.startsWith('gemini');
+  }
+
+  get mimeTypes(): string[] {
+    if (this.isGemini) {
+      return [
+        // Image
+        'image/png',
+        'image/jpeg',
+        'image/webp',
+        'image/heic',
+        'image/heif',
+
+        // Audio
+        'audio/wav',
+        'audio/mp3',
+        'audio/aiff',
+        'audio/aac',
+        'audio/ogg',
+        'audio/flac',
+
+        // Video
+        'video/mp4',
+        'video/mpeg',
+        'video/mov',
+        'video/avi',
+        'video/x-flv',
+        'video/mpg',
+        'video/webm',
+        'video/wmv',
+        'video/3gpp',
+
+        // Document
+        'application/pdf',
+        'application/x-javascript',
+        'text/javascript',
+        'application/x-python',
+        'text/x-python',
+        'text/plain',
+        'text/html',
+        'text/css',
+        'text/md',
+        'text/csv',
+        'text/xml',
+        'text/rtf',
+      ];
+    }
+    return [];
+  }
+
   async callApi(prompt: string, context?: CallApiContextParams): Promise<ProviderResponse> {
     if (!this.getApiKey()) {
       throw new Error(
@@ -92,8 +143,7 @@ export class PalmChatProvider extends PalmGenericProvider {
       );
     }
 
-    const isGemini = this.modelName.startsWith('gemini');
-    if (isGemini) {
+    if (this.isGemini) {
       return this.callGemini(prompt, context);
     }
 
@@ -154,9 +204,37 @@ export class PalmChatProvider extends PalmGenericProvider {
   }
 
   async callGemini(prompt: string, context?: CallApiContextParams): Promise<ProviderResponse> {
-    const { contents, systemInstruction } = maybeCoerceToGeminiFormat(
-      parseChatPrompt(prompt, [{ content: prompt }]),
-    );
+    const coerced = maybeCoerceToGeminiFormat(parseChatPrompt(prompt, [{ content: prompt }]));
+
+    let contents = coerced.contents;
+    const systemInstruction = coerced.systemInstruction;
+
+    contents = contents.map((content) => {
+      if (
+        context?.renderFn &&
+        content.parts.length === 1 &&
+        'text' in content.parts[0] &&
+        typeof content.parts[0].text === 'string'
+      ) {
+        // If it's a single string, we may have file placeholders to replace
+        return {
+          ...content,
+          parts: context?.renderFn(content.parts[0].text).map((part) => {
+            if ('file' in part) {
+              return {
+                inline_data: {
+                  mimeType: part.mimeType,
+                  data: part.file.toString('base64'),
+                },
+              };
+            }
+            return { text: part.text };
+          }),
+        };
+      }
+      return content;
+    });
+
     const body: Record<string, any> = {
       contents,
       generationConfig: {

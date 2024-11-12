@@ -39,6 +39,7 @@ export interface CallApiContextParams {
   logger?: winston.Logger;
   originalProvider?: ApiProvider;
   prompt: Prompt;
+  renderFn?: (prompt: string) => MultiPartPrompt;
   vars: Record<string, string | object>;
   debug?: boolean;
 }
@@ -52,6 +53,7 @@ export interface ApiProvider {
   callApi: CallApiFunction;
   callEmbeddingApi?: (input: string) => Promise<ProviderEmbeddingResponse>;
   callClassificationApi?: (prompt: string) => Promise<ProviderClassificationResponse>;
+  mimeTypes?: string[];
   label?: ProviderLabel;
   transform?: string;
   delay?: number;
@@ -172,6 +174,8 @@ export type CallApiFunction = {
   ): Promise<ProviderResponse>;
   label?: string;
 };
+
+export type MultiPartPrompt = ({ text: string } | { file: Buffer; mimeType: string })[];
 
 export function isApiProvider(provider: any): provider is ApiProvider {
   return (

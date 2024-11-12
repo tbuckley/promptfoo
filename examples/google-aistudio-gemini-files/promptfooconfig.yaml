@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+prompts:
+  - 'Write a tweet about {{ file }}'
+  - 'Write a very concise, funny tweet about {{ file}}'
+
+providers:
+  - id: google:gemini-1.5-flash-latest
+    config:
+      generationConfig:
+        temperature: 0
+        topP: 1
+
+tests:
+  - vars:
+      file: file://sample.pdf
+  - vars:
+      file: file://./../openai-files/turkeys.jpg

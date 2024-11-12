@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-table';
 import * as React from 'react';
 import { useEffect, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import { Link } from 'react-router-dom';
 import { useToast } from '@app/hooks/useToast';
 import type {
@@ -31,6 +31,8 @@ import Tooltip from '@mui/material/Tooltip';
 import Typography from '@mui/material/Typography';
 import type { CellContext, ColumnDef, VisibilityState } from '@tanstack/table-core';
 import yaml from 'js-yaml';
+// @ts-ignore
+import rehypeTruncate from 'rehype-truncate';
 import remarkGfm from 'remark-gfm';
 import invariant from 'tiny-invariant';
 import CustomMetrics from './CustomMetrics';
@@ -395,14 +397,32 @@ function ResultsTable({
               ),
               cell: (info: CellContext<EvaluateTableRow, string>) => {
                 const value = info.getValue();
-                const truncatedValue =
-                  value.length > maxTextLength
-                    ? `${value.substring(0, maxTextLength - 3).trim()}...`
-                    : value;
                 return (
                   <div className="cell">
                     {renderMarkdown ? (
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{truncatedValue}</ReactMarkdown>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeTruncate]}
+                        urlTransform={(url) => {
+                          if (url.startsWith('data:')) {
+                            // Pass through data URLs
+                            return url;
+                          }
+                          return defaultUrlTransform(url);
+                        }}
+                        components={{
+                          a: (node) => {
+                            // If it's a data URL (likely from a file), make it a download link
+                            const { node: _node, ...props } = node;
+                            if (props.href && props.href.startsWith('data:')) {
+                              props.download = true;
+                            }
+                            return <a {...props} />;
+                          },
+                        }}
+                      >
+                        {value}
+                      </ReactMarkdown>
                     ) : (
                       <TruncatedText text={value} maxLength={maxTextLength} />
                     )}

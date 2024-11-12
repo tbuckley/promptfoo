@@ -1,7 +1,12 @@
 import * as fs from 'fs';
 import { createRequire } from 'node:module';
 import * as path from 'path';
-import { renderPrompt, resolveVariables, runExtensionHook } from '../src/evaluatorHelpers';
+import {
+  renderPrompt,
+  renderPromptWithFiles,
+  resolveVariables,
+  runExtensionHook,
+} from '../src/evaluatorHelpers';
 import type { Prompt } from '../src/types';
 import { transform } from '../src/util/transform';
 
@@ -178,6 +183,49 @@ describe('renderPrompt', () => {
 
     expect(fs.readFileSync).toHaveBeenCalledWith(expect.stringContaining('testData.yaml'), 'utf8');
     expect(renderedPrompt).toBe('Test prompt with {"key":"valueFromYaml"}');
+  });
+});
+
+describe('renderPromptWithFiles', () => {
+  it('should load external files if supported by the provider', async () => {
+    const prompt = toPrompt('Test image prompt {{ myImage }}');
+    const vars = { myImage: 'file:///path/to/testData.png' };
+    const evaluateOptions = {};
+
+    const buffer = Buffer.from('image data');
+    jest.spyOn(fs, 'readFileSync').mockReturnValue(buffer);
+
+    const [renderedPrompt, renderers] = await renderPromptWithFiles(prompt, vars, evaluateOptions, {
+      id: () => 'testProvider',
+      callApi: jest.fn(),
+      mimeTypes: ['image/png'],
+    });
+
+    expect(renderers).toBeDefined();
+    const parsed = renderers!.renderMultiPart(renderedPrompt);
+
+    expect(fs.readFileSync).toHaveBeenCalledWith(expect.stringContaining('testData.png'));
+    expect(parsed).toStrictEqual([
+      { text: 'Test image prompt ' },
+      { file: buffer, mimeType: 'image/png' },
+    ]);
+  });
+
+  it('should not provide renderers if no files are supported', async () => {
+    const prompt = toPrompt('Test image prompt {{ myImage }}');
+    const vars = { myImage: 'file:///path/to/testData.png' };
+    const evaluateOptions = {};
+
+    jest.spyOn(fs, 'readFileSync').mockReturnValueOnce('image data');
+
+    const [renderedPrompt, renderers] = await renderPromptWithFiles(prompt, vars, evaluateOptions, {
+      id: () => 'testProvider',
+      callApi: jest.fn(),
+      mimeTypes: [],
+    });
+
+    expect(renderers).toBeUndefined();
+    expect(renderedPrompt).toBe('Test image prompt image data');
   });
 });
 

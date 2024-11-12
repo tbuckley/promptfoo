@@ -97,7 +97,8 @@ const PartSchema = z.object({
   text: z.string().optional(),
   inline_data: z
     .object({
-      mime_type: z.string(),
+      // FIXME(tbuckley): Check that it's ok to change mime_type to mimeType to match the docs: https://ai.google.dev/api/caching#Blob
+      mimeType: z.string(),
       data: z.string(),
     })
     .optional(),

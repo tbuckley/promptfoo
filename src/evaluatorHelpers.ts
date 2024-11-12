@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import yaml from 'js-yaml';
+import mime from 'mime-types';
 import * as path from 'path';
 import invariant from 'tiny-invariant';
 import cliState from './cliState';
@@ -9,12 +10,13 @@ import logger from './logger';
 import { isPackagePath, loadFromPackage } from './providers/packageParser';
 import { runPython } from './python/pythonUtils';
 import telemetry from './telemetry';
-import type { ApiProvider, NunjucksFilterMap, Prompt } from './types';
+import type { ApiProvider, MultiPartPrompt, NunjucksFilterMap, Prompt } from './types';
 import { renderVarsInObject } from './util';
 import { isJavascriptFile } from './util/file';
 import { getNunjucksEngine } from './util/templates';
 import { transform } from './util/transform';
 
+// FIXME(tbuckley): consider how to handle references to Buffers
 export function resolveVariables(
   variables: Record<string, string | object>,
 ): Record<string, string | object> {
@@ -52,10 +54,13 @@ export async function renderPrompt(
   vars: Record<string, string | object>,
   nunjucksFilters?: NunjucksFilterMap,
   provider?: ApiProvider,
+  unknownFileCallback?: (filePath: string) => { placeholder: string; markdown: string } | undefined,
 ): Promise<string> {
   const nunjucks = getNunjucksEngine(nunjucksFilters);
 
   let basePrompt = prompt.raw;
+
+  const placeholderVars: Record<string, string> = {};
 
   // Load files
   for (const [varName, value] of Object.entries(vars)) {
@@ -103,7 +108,13 @@ export async function renderPrompt(
           yaml.load(fs.readFileSync(filePath, 'utf8')) as string | object,
         );
       } else {
-        vars[varName] = fs.readFileSync(filePath, 'utf8').trim();
+        const res = unknownFileCallback?.(filePath);
+        if (res) {
+          vars[varName] = res.markdown; // For showing in tables
+          placeholderVars[varName] = res.placeholder; // For rendering into the prompt
+        } else {
+          vars[varName] = fs.readFileSync(filePath, 'utf8').trim();
+        }
       }
     } else if (isPackagePath(value)) {
       const basePath = cliState.basePath || '';
@@ -125,9 +136,11 @@ export async function renderPrompt(
     }
   }
 
+  const renderVars = { ...vars, ...placeholderVars };
+
   // Apply prompt functions
   if (prompt.function) {
-    const result = await prompt.function({ vars, provider });
+    const result = await prompt.function({ vars: renderVars, provider });
     if (typeof result === 'string') {
       basePrompt = result;
     } else if (typeof result === 'object') {
@@ -138,19 +151,19 @@ export async function renderPrompt(
   }
 
   // Remove any trailing newlines from vars, as this tends to be a footgun for JSON prompts.
-  for (const key of Object.keys(vars)) {
-    if (typeof vars[key] === 'string') {
-      vars[key] = (vars[key] as string).replace(/\n$/, '');
+  for (const key of Object.keys(renderVars)) {
+    if (typeof renderVars[key] === 'string') {
+      renderVars[key] = (renderVars[key] as string).replace(/\n$/, '');
     }
   }
 
   // Resolve variable mappings
-  resolveVariables(vars);
+  resolveVariables(renderVars);
 
   // Third party integrations
   if (prompt.raw.startsWith('portkey://')) {
     const { getPrompt } = await import('./integrations/portkey');
-    const portKeyResult = await getPrompt(prompt.raw.slice('portkey://'.length), vars);
+    const portKeyResult = await getPrompt(prompt.raw.slice('portkey://'.length), renderVars);
     return JSON.stringify(portKeyResult.messages);
   } else if (prompt.raw.startsWith('langfuse://')) {
     const { getPrompt } = await import('./integrations/langfuse');
@@ -164,7 +177,7 @@ export async function renderPrompt(
 
     const langfuseResult = await getPrompt(
       helper,
-      vars,
+      renderVars,
       promptType,
       version === 'latest' ? undefined : Number(version),
     );
@@ -176,7 +189,7 @@ export async function renderPrompt(
     const [majorVersion, minorVersion] = version ? version.split('.') : [undefined, undefined];
     const heliconeResult = await getPrompt(
       id,
-      vars,
+      renderVars,
       majorVersion === undefined ? undefined : Number(majorVersion),
       minorVersion === undefined ? undefined : Number(minorVersion),
     );
@@ -186,17 +199,85 @@ export async function renderPrompt(
   // Render prompt
   try {
     if (getEnvBool('PROMPTFOO_DISABLE_JSON_AUTOESCAPE')) {
-      return nunjucks.renderString(basePrompt, vars);
+      return nunjucks.renderString(basePrompt, renderVars);
     }
 
     const parsed = JSON.parse(basePrompt);
 
     // The _raw_ prompt is valid JSON. That means that the user likely wants to substitute vars _within_ the JSON itself.
     // Recursively walk the JSON structure. If we find a string, render it with nunjucks.
-    return JSON.stringify(renderVarsInObject(parsed, vars), null, 2);
+    return JSON.stringify(renderVarsInObject(parsed, renderVars), null, 2);
   } catch {
-    return nunjucks.renderString(basePrompt, vars);
+    return nunjucks.renderString(basePrompt, renderVars);
   }
+}
+
+export type FileIdToMetadataMap = Map<string, { filePath: string; mimeType: string }>;
+
+export interface FileRenderers {
+  renderMultiPart: (prompt: string) => MultiPartPrompt;
+  idToMetadata: FileIdToMetadataMap;
+}
+
+export async function renderPromptWithFiles(
+  prompt: Prompt,
+  vars: Record<string, string | object>,
+  nunjucksFilters?: NunjucksFilterMap,
+  provider?: ApiProvider,
+  renderers?: FileRenderers,
+): Promise<[string, FileRenderers | undefined]> {
+  const fileIdToMetadata: FileIdToMetadataMap = new Map(
+    renderers ? renderers.idToMetadata.entries() : [],
+  );
+
+  const renderedPrompt = await renderPrompt(prompt, vars, nunjucksFilters, provider, (filePath) => {
+    const mimeType = mime.lookup(filePath);
+    if (mimeType && provider?.mimeTypes?.includes(mimeType)) {
+      const fileId = (fileIdToMetadata.size + 1).toString();
+      fileIdToMetadata.set(fileId, { filePath, mimeType });
+
+      const placeholder = `__PROMPTFOO_FILE_${fileId}__`;
+
+      const base64 = fs.readFileSync(filePath, 'base64');
+
+      let markdown: string;
+      if (mimeType.startsWith('image')) {
+        markdown = `![${filePath}](data:${mimeType};base64,${base64})`;
+      } else {
+        markdown = `[${filePath}](data:${mimeType};base64,${base64})`;
+      }
+
+      return { placeholder, markdown };
+    }
+    return undefined;
+  });
+
+  if (fileIdToMetadata.size > 0) {
+    return [
+      renderedPrompt,
+      {
+        idToMetadata: fileIdToMetadata,
+        renderMultiPart: (prompt: string) => {
+          const parsed: MultiPartPrompt = [];
+          prompt.split(/(__PROMPTFOO_FILE_[a-zA-Z0-9\-]+?__)/).forEach((part) => {
+            if (part.startsWith('__PROMPTFOO_FILE_')) {
+              const key = part.slice('__PROMPTFOO_FILE_'.length, -2);
+              const details = fileIdToMetadata.get(key);
+              if (!details) {
+                throw new Error(`File with id ${key} not found`);
+              }
+              parsed.push({ file: fs.readFileSync(details.filePath), mimeType: details.mimeType });
+            } else if (part.length > 0) {
+              parsed.push({ text: part });
+            }
+          });
+          return parsed;
+        },
+      },
+    ];
+  }
+
+  return [renderedPrompt, undefined];
 }
 
 /**

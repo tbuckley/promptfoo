@@ -370,6 +370,24 @@ describe('call provider apis', () => {
     expect(result.tokenUsage).toEqual({ total: 15, prompt: 10, completion: 5 });
   });
 
+  it('OpenAiChatCompletionProvider creates array content for vision models', async () => {
+    const provider = new OpenAiChatCompletionProvider('gpt-4o');
+    const { body } = provider.getOpenAiBody('a normal prompt', {
+      prompt: { raw: 'a normal prompt', label: '' },
+      vars: {},
+      renderFn: (prompt) => [{ text: prompt }],
+    });
+    expect(body.messages).toEqual([
+      { role: 'user', content: [{ type: 'text', text: 'a normal prompt' }] },
+    ]);
+  });
+
+  it('OpenAiChatCompletionProvider creates string content for non-vision models', async () => {
+    const provider = new OpenAiChatCompletionProvider('gpt-3.5-turbo');
+    const { body } = provider.getOpenAiBody('a normal prompt');
+    expect(body.messages).toEqual([{ role: 'user', content: 'a normal prompt' }]);
+  });
+
   it('AzureOpenAiCompletionProvider callApi', async () => {
     const mockResponse = {
       ...defaultMockResponse,
